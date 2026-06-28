@@ -74,7 +74,6 @@ void MegmeetUART::setup()
 void MegmeetUART::dump_config()
 {
     ESP_LOGCONFIG(TAG, "Megmeet UART");
-    LOG_UART_DEVICE(this);
 }
 
 void MegmeetUART::loop()
