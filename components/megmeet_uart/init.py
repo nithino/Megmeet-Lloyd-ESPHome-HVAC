@@ -1,1 +1,5 @@
-from .sensor import CONFIG_SCHEMA, to_code
+import esphome.codegen as cg
+
+CODEOWNERS = ["@nithino"]
+
+megmeet_uart_ns = cg.esphome_ns.namespace("megmeet_uart")
