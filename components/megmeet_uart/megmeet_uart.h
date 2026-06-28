@@ -28,6 +28,9 @@ class MegmeetUART : public Component, public uart::UARTDevice {
     uint8_t crc2;
   };
 
+  // Add this line
+  void dump_frame(const char *name, const Frame &frame);
+
   void process_frame(const Frame &frame);
 
   void process_status(const Frame &frame);
