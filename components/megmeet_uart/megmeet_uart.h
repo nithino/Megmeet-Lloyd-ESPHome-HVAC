@@ -7,9 +7,8 @@ namespace esphome {
 namespace megmeet_uart {
 
 class MegmeetUART : public Component, public uart::UARTDevice {
-
  public:
-  MegmeetUART(uart::UARTComponent *parent) : UARTDevice(parent) {}
+  MegmeetUART() = default;
 
   void setup() override;
   void loop() override;
