@@ -81,14 +81,61 @@ void MegmeetUART::dump_config()
 // Loop
 
 void MegmeetUART::loop() {
+  static uint8_t frame[10];
+  static uint8_t index = 0;
+
   while (available()) {
     uint8_t byte;
 
-    if (read_byte(&byte)) {
-      ESP_LOGI(TAG, "%02X", byte);
-    } else {
-      ESP_LOGW(TAG, "read_byte() failed");
+    if (!read_byte(&byte))
       break;
+
+    switch (index) {
+
+      // Waiting for first sync byte
+      case 0:
+        if (byte == 0x55) {
+          frame[0] = byte;
+          index = 1;
+        }
+        break;
+
+      // Waiting for second sync byte
+      case 1:
+        if (byte == 0x35) {
+          frame[1] = byte;
+          index = 2;
+        } else if (byte == 0x55) {
+          // Possible new frame starting
+          frame[0] = 0x55;
+          index = 1;
+        } else {
+          index = 0;
+        }
+        break;
+
+      default:
+        frame[index++] = byte;
+
+        if (index == sizeof(frame)) {
+
+          ESP_LOGI(
+              TAG,
+              "RX: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+              frame[0],
+              frame[1],
+              frame[2],
+              frame[3],
+              frame[4],
+              frame[5],
+              frame[6],
+              frame[7],
+              frame[8],
+              frame[9]);
+
+          index = 0;
+        }
+        break;
     }
   }
 }
