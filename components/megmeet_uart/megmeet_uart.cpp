@@ -207,25 +207,56 @@ void MegmeetUART::process_frame(const Frame &frame)
 
 void MegmeetUART::dump_frame(const char *name, const Frame &f)
 {
-    ESP_LOGI(
-        TAG,
-        "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-        name,
-        f.header1,
-        f.header2,
-        f.proto1,
-        f.proto2,
-        f.type,
-        f.data1,
-        f.data2,
-        f.data3,
-        f.crc1,
-        f.crc2);
+  ESP_LOGI(
+      TAG,
+      "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+      name,
+      f.header1,
+      f.header2,
+      f.proto1,
+      f.proto2,
+      f.type,
+      f.data1,
+      f.data2,
+      f.data3,
+      f.crc1,
+      f.crc2);
 }
-
 // Helpers End
 
+// Handlers //
 
+void MegmeetUART::process_control(const Frame &f)
+{
+  dump_frame("CONTROL", f);
+}
+
+void MegmeetUART::process_status(const Frame &f)
+{
+  dump_frame("STATUS", f);
+}
+
+void MegmeetUART::process_query(const Frame &f)
+{
+  dump_frame("QUERY", f);
+}
+
+void MegmeetUART::process_heartbeat(const Frame &f)
+{
+  dump_frame("HEARTBEAT", f);
+}
+
+void MegmeetUART::process_sensor(const Frame &f)
+{
+  dump_frame("SENSOR", f);
+}
+
+void MegmeetUART::process_unknown(const Frame &f)
+{
+  dump_frame("UNKNOWN", f);
+}
+
+// Handlers End
 
 
 }  // namespace megmeet_uart
