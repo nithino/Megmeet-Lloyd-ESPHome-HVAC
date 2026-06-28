@@ -80,65 +80,69 @@ void MegmeetUART::dump_config()
 
 // Loop
 
+
 void MegmeetUART::loop() {
-  static uint8_t frame[10];
-  static uint8_t index = 0;
+    static constexpr uint8_t HEADER1 = 0x55;
+    static constexpr uint8_t HEADER2 = 0x35;
+    static constexpr size_t FRAME_SIZE = 10;
 
-  while (available()) {
-    uint8_t byte;
+    static uint8_t frame[FRAME_SIZE];
+    static size_t index = 0;
+    static uint32_t last_frame = 0;
 
-    if (!read_byte(&byte))
-      break;
+    while (available()) {
 
-    switch (index) {
+        uint8_t byte;
 
-      // Waiting for first sync byte
-      case 0:
-        if (byte == 0x55) {
-          frame[0] = byte;
-          index = 1;
+        if (!read_byte(&byte))
+            break;
+
+        switch (index) {
+
+        case 0:
+            if (byte == HEADER1) {
+                frame[index++] = byte;
+            }
+            break;
+
+        case 1:
+            if (byte == HEADER2) {
+                frame[index++] = byte;
+            } else if (byte == HEADER1) {
+                frame[0] = HEADER1;
+                index = 1;
+            } else {
+                index = 0;
+            }
+            break;
+
+        default:
+            frame[index++] = byte;
+
+            if (index == FRAME_SIZE) {
+
+                uint32_t now = millis();
+
+                ESP_LOGI(
+                    TAG,
+                    "[+%4lu ms] CMD=%02X DATA=%02X %02X %02X CHK=%02X %02X",
+                    (unsigned long)(now - last_frame),
+                    frame[4],
+                    frame[5],
+                    frame[6],
+                    frame[7],
+                    frame[8],
+                    frame[9]);
+
+                last_frame = now;
+                index = 0;
+            }
+            break;
         }
-        break;
-
-      // Waiting for second sync byte
-      case 1:
-        if (byte == 0x35) {
-          frame[1] = byte;
-          index = 2;
-        } else if (byte == 0x55) {
-          // Possible new frame starting
-          frame[0] = 0x55;
-          index = 1;
-        } else {
-          index = 0;
-        }
-        break;
-
-      default:
-        frame[index++] = byte;
-
-        if (index == sizeof(frame)) {
-
-          ESP_LOGI(
-              TAG,
-              "RX: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-              frame[0],
-              frame[1],
-              frame[2],
-              frame[3],
-              frame[4],
-              frame[5],
-              frame[6],
-              frame[7],
-              frame[8],
-              frame[9]);
-
-          index = 0;
-        }
-        break;
     }
-  }
 }
+
+
 
 // Loop End
 
