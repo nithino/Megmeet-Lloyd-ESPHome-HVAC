@@ -203,68 +203,27 @@ void MegmeetUART::process_frame(const Frame &frame)
 
 
 
-// Handlers
+// Helpers
 
-void MegmeetUART::process_status(const Frame &f)
+void MegmeetUART::dump_frame(const char *name, const Frame &f)
 {
-    ESP_LOGI(TAG,
-             "STATUS      %02X %02X %02X %02X",
-             f.data1,
-             f.data2,
-             f.data3,
-             f.crc1);
+    ESP_LOGI(
+        TAG,
+        "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+        name,
+        f.header1,
+        f.header2,
+        f.proto1,
+        f.proto2,
+        f.type,
+        f.data1,
+        f.data2,
+        f.data3,
+        f.crc1,
+        f.crc2);
 }
 
-void MegmeetUART::process_control(const Frame &f)
-{
-    ESP_LOGI(TAG,
-             "CONTROL     %02X %02X %02X %02X",
-             f.data1,
-             f.data2,
-             f.data3,
-             f.crc1);
-}
-
-void MegmeetUART::process_query(const Frame &f)
-{
-    ESP_LOGI(TAG,
-             "QUERY       %02X %02X %02X %02X",
-             f.data1,
-             f.data2,
-             f.data3,
-             f.crc1);
-}
-
-void MegmeetUART::process_heartbeat(const Frame &f)
-{
-    ESP_LOGD(TAG,
-             "HEARTBEAT   %02X %02X",
-             f.crc1,
-             f.crc2);
-}
-
-void MegmeetUART::process_sensor(const Frame &f)
-{
-    ESP_LOGI(TAG,
-             "SENSOR      %02X %02X %02X",
-             f.data1,
-             f.data2,
-             f.data3);
-}
-
-void MegmeetUART::process_unknown(const Frame &f)
-{
-    ESP_LOGD(TAG,
-             "UNKNOWN %02X : %02X %02X %02X %02X %02X",
-             f.type,
-             f.data1,
-             f.data2,
-             f.data3,
-             f.crc1,
-             f.crc2);
-}
-
-// Handlers End
+// Helpers End
 
 
 
