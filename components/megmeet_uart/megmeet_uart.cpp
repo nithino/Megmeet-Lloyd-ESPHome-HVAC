@@ -80,13 +80,8 @@ void MegmeetUART::dump_config()
 
 // Loop
 
-
 void MegmeetUART::loop()
 {
-    static uint8_t buffer[1024];
-    static size_t count = 0;
-    static uint32_t last_rx = 0;
-
     while (available()) {
 
         uint8_t b;
@@ -94,38 +89,10 @@ void MegmeetUART::loop()
         if (!read_byte(&b))
             break;
 
-        if (count < sizeof(buffer))
-            buffer[count++] = b;
-
-        last_rx = millis();
-    }
-
-    // If no bytes have arrived for 20ms,
-    // dump everything we've collected.
-    if (count && (millis() - last_rx) > 100) {
-
-        char line[2048];
-        size_t pos = 0;
-
-        pos += snprintf(line + pos,
-                        sizeof(line) - pos,
-                        "\nRAW (%u bytes): ",
-                        (unsigned)count);
-
-        for (size_t i = 0; i < count; i++) {
-
-            pos += snprintf(line + pos,
-                            sizeof(line) - pos,
-                            "%02X ",
-                            buffer[i]);
-
-            if (pos > sizeof(line) - 10)
-                break;
-        }
-
-        ESP_LOGI(TAG, "%s", line);
-
-        count = 0;
+        ESP_LOGI(TAG,
+                 "%10lu  %02X",
+                 (unsigned long) micros(),
+                 b);
     }
 }
 
