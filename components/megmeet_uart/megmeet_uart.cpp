@@ -82,67 +82,108 @@ void MegmeetUART::dump_config()
 
 
 void MegmeetUART::loop() {
-    static constexpr uint8_t HEADER1 = 0x55;
-    static constexpr uint8_t HEADER2 = 0x35;
-    static constexpr size_t FRAME_SIZE = 10;
+  static constexpr uint8_t HEADER1 = 0x55;
+  static constexpr uint8_t HEADER2 = 0x35;
+  static constexpr size_t FRAME_SIZE = 10;
 
-    static uint8_t frame[FRAME_SIZE];
-    static size_t index = 0;
-    static uint32_t last_frame = 0;
+  static uint8_t frame[FRAME_SIZE];
+  static size_t index = 0;
+  static uint32_t last_frame_time = 0;
 
-    while (available()) {
+  while (available()) {
+    uint8_t byte;
 
-        uint8_t byte;
+    if (!read_byte(&byte))
+      break;
 
-        if (!read_byte(&byte))
-            break;
+    switch (index) {
 
-        switch (index) {
-
-        case 0:
-            if (byte == HEADER1) {
-                frame[index++] = byte;
-            }
-            break;
-
-        case 1:
-            if (byte == HEADER2) {
-                frame[index++] = byte;
-            } else if (byte == HEADER1) {
-                frame[0] = HEADER1;
-                index = 1;
-            } else {
-                index = 0;
-            }
-            break;
-
-        default:
-            frame[index++] = byte;
-
-            if (index == FRAME_SIZE) {
-
-                uint32_t now = millis();
-
-                ESP_LOGI(
-                    TAG,
-                    "[+%4lu ms] CMD=%02X DATA=%02X %02X %02X CHK=%02X %02X",
-                    (unsigned long)(now - last_frame),
-                    frame[4],
-                    frame[5],
-                    frame[6],
-                    frame[7],
-                    frame[8],
-                    frame[9]);
-
-                last_frame = now;
-                index = 0;
-            }
-            break;
+      // ----------------------------------------------------------
+      // Wait for first sync byte (0x55)
+      // ----------------------------------------------------------
+      case 0:
+        if (byte == HEADER1) {
+          frame[0] = byte;
+          index = 1;
         }
+        break;
+
+      // ----------------------------------------------------------
+      // Wait for second sync byte (0x35)
+      // ----------------------------------------------------------
+      case 1:
+        if (byte == HEADER2) {
+          frame[1] = byte;
+          index = 2;
+        } else if (byte == HEADER1) {
+          // Another 0x55 - possible new frame
+          frame[0] = HEADER1;
+          index = 1;
+        } else {
+          index = 0;
+        }
+        break;
+
+      // ----------------------------------------------------------
+      // Collect remaining bytes
+      // ----------------------------------------------------------
+      default:
+        frame[index++] = byte;
+
+        if (index == FRAME_SIZE) {
+
+          uint32_t now = millis();
+
+          const char *type = "UNKNOWN";
+
+          switch (frame[4]) {
+            case 0x09:
+              type = "STATUS";
+              break;
+
+            case 0x2F:
+              type = "CONTROL";
+              break;
+
+            case 0x31:
+              type = "EVENT";
+              break;
+
+            case 0x4C:
+              type = "HEARTBEAT";
+              break;
+
+            case 0x61:
+              type = "SENSOR";
+              break;
+
+            case 0x98:
+              type = "QUERY";
+              break;
+          }
+
+          ESP_LOGI(
+              TAG,
+              "[+%5lu ms] %-10s "
+              "TYPE=%02X  "
+              "DATA=%02X %02X %02X  "
+              "CRC=%02X %02X",
+              (unsigned long)(now - last_frame_time),
+              type,
+              frame[4],
+              frame[5],
+              frame[6],
+              frame[7],
+              frame[8],
+              frame[9]);
+
+          last_frame_time = now;
+          index = 0;
+        }
+        break;
     }
+  }
 }
-
-
 
 // Loop End
 
