@@ -83,7 +83,7 @@ void MegmeetUART::dump_config()
 
 void MegmeetUART::loop()
 {
-    static uint8_t buffer[512];
+    static uint8_t buffer[1024];
     static size_t count = 0;
     static uint32_t last_rx = 0;
 
@@ -102,7 +102,7 @@ void MegmeetUART::loop()
 
     // If no bytes have arrived for 20ms,
     // dump everything we've collected.
-    if (count && (millis() - last_rx) > 20) {
+    if (count && (millis() - last_rx) > 100) {
 
         char line[2048];
         size_t pos = 0;
