@@ -81,13 +81,11 @@ void MegmeetUART::dump_config()
 // Loop
 
 
-void MegmeetUART::loop() {
-
-    static constexpr uint8_t HEADER1 = 0x55;
-    static constexpr uint8_t HEADER2 = 0x35;
-
-    static Frame frame;
-    static uint8_t index = 0;
+void MegmeetUART::loop()
+{
+    static uint8_t buffer[512];
+    static size_t count = 0;
+    static uint32_t last_rx = 0;
 
     while (available()) {
 
@@ -96,75 +94,38 @@ void MegmeetUART::loop() {
         if (!read_byte(&b))
             break;
 
-        switch (index) {
+        if (count < sizeof(buffer))
+            buffer[count++] = b;
 
-        case 0:
+        last_rx = millis();
+    }
 
-            if (b == HEADER1) {
-                frame.header1 = b;
-                index = 1;
-            }
+    // If no bytes have arrived for 20ms,
+    // dump everything we've collected.
+    if (count && (millis() - last_rx) > 20) {
 
-            break;
+        char line[2048];
+        size_t pos = 0;
 
-        case 1:
+        pos += snprintf(line + pos,
+                        sizeof(line) - pos,
+                        "\nRAW (%u bytes): ",
+                        (unsigned)count);
 
-            if (b == HEADER2) {
-                frame.header2 = b;
-                index = 2;
-            } else if (b == HEADER1) {
-                frame.header1 = b;
-                index = 1;
-            } else {
-                index = 0;
-            }
+        for (size_t i = 0; i < count; i++) {
 
-            break;
+            pos += snprintf(line + pos,
+                            sizeof(line) - pos,
+                            "%02X ",
+                            buffer[i]);
 
-        case 2:
-            frame.proto1 = b;
-            index++;
-            break;
-
-        case 3:
-            frame.proto2 = b;
-            index++;
-            break;
-
-        case 4:
-            frame.type = b;
-            index++;
-            break;
-
-        case 5:
-            frame.data1 = b;
-            index++;
-            break;
-
-        case 6:
-            frame.data2 = b;
-            index++;
-            break;
-
-        case 7:
-            frame.data3 = b;
-            index++;
-            break;
-
-        case 8:
-            frame.crc1 = b;
-            index++;
-            break;
-
-        case 9:
-            frame.crc2 = b;
-
-            process_frame(frame);
-
-            index = 0;
-
-            break;
+            if (pos > sizeof(line) - 10)
+                break;
         }
+
+        ESP_LOGI(TAG, "%s", line);
+
+        count = 0;
     }
 }
 
