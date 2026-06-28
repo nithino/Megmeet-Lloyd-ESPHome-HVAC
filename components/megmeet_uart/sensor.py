@@ -4,11 +4,11 @@ import esphome.config_validation as cv
 from esphome.components import uart
 from esphome.const import CONF_ID
 
+from . import megmeet_uart_ns
+
 DEPENDENCIES = ["uart"]
 
-megmeet_ns = cg.esphome_ns.namespace("megmeet_uart")
-
-MegmeetUART = megmeet_ns.class_(
+MegmeetUART = megmeet_uart_ns.class_(
     "MegmeetUART",
     cg.Component,
     uart.UARTDevice,
@@ -29,5 +29,4 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
 
     await cg.register_component(var, config)
-
     await uart.register_uart_device(var, config)
