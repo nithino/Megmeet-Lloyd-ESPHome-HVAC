@@ -82,35 +82,190 @@ void MegmeetUART::dump_config()
 
 
 void MegmeetUART::loop() {
-  static uint8_t buffer[64];
-  static size_t count = 0;
 
-  while (available()) {
+    static constexpr uint8_t HEADER1 = 0x55;
+    static constexpr uint8_t HEADER2 = 0x35;
 
-    uint8_t b;
+    static Frame frame;
+    static uint8_t index = 0;
 
-    if (!read_byte(&b))
-      break;
+    while (available()) {
 
-    buffer[count++] = b;
+        uint8_t b;
 
-    if (count == sizeof(buffer)) {
+        if (!read_byte(&b))
+            break;
 
-      char line[256];
-      char *p = line;
+        switch (index) {
 
-      for (size_t i = 0; i < count; i++) {
-        p += sprintf(p, "%02X ", buffer[i]);
-      }
+        case 0:
 
-      ESP_LOGI(TAG, "%s", line);
+            if (b == HEADER1) {
+                frame.header1 = b;
+                index = 1;
+            }
 
-      count = 0;
+            break;
+
+        case 1:
+
+            if (b == HEADER2) {
+                frame.header2 = b;
+                index = 2;
+            } else if (b == HEADER1) {
+                frame.header1 = b;
+                index = 1;
+            } else {
+                index = 0;
+            }
+
+            break;
+
+        case 2:
+            frame.proto1 = b;
+            index++;
+            break;
+
+        case 3:
+            frame.proto2 = b;
+            index++;
+            break;
+
+        case 4:
+            frame.type = b;
+            index++;
+            break;
+
+        case 5:
+            frame.data1 = b;
+            index++;
+            break;
+
+        case 6:
+            frame.data2 = b;
+            index++;
+            break;
+
+        case 7:
+            frame.data3 = b;
+            index++;
+            break;
+
+        case 8:
+            frame.crc1 = b;
+            index++;
+            break;
+
+        case 9:
+            frame.crc2 = b;
+
+            process_frame(frame);
+
+            index = 0;
+
+            break;
+        }
     }
-  }
 }
 
 // Loop End
+
+
+void MegmeetUART::process_frame(const Frame &frame)
+{
+    switch (frame.type) {
+
+        case 0x09:
+            process_status(frame);
+            break;
+
+        case 0x2F:
+            process_control(frame);
+            break;
+
+        case 0x4C:
+            process_heartbeat(frame);
+            break;
+
+        case 0x61:
+            process_sensor(frame);
+            break;
+
+        case 0x98:
+            process_query(frame);
+            break;
+
+        default:
+            process_unknown(frame);
+            break;
+    }
+}
+
+
+
+// Handlers
+
+void MegmeetUART::process_status(const Frame &f)
+{
+    ESP_LOGI(TAG,
+             "STATUS      %02X %02X %02X %02X",
+             f.data1,
+             f.data2,
+             f.data3,
+             f.crc1);
+}
+
+void MegmeetUART::process_control(const Frame &f)
+{
+    ESP_LOGI(TAG,
+             "CONTROL     %02X %02X %02X %02X",
+             f.data1,
+             f.data2,
+             f.data3,
+             f.crc1);
+}
+
+void MegmeetUART::process_query(const Frame &f)
+{
+    ESP_LOGI(TAG,
+             "QUERY       %02X %02X %02X %02X",
+             f.data1,
+             f.data2,
+             f.data3,
+             f.crc1);
+}
+
+void MegmeetUART::process_heartbeat(const Frame &f)
+{
+    ESP_LOGD(TAG,
+             "HEARTBEAT   %02X %02X",
+             f.crc1,
+             f.crc2);
+}
+
+void MegmeetUART::process_sensor(const Frame &f)
+{
+    ESP_LOGI(TAG,
+             "SENSOR      %02X %02X %02X",
+             f.data1,
+             f.data2,
+             f.data3);
+}
+
+void MegmeetUART::process_unknown(const Frame &f)
+{
+    ESP_LOGD(TAG,
+             "UNKNOWN %02X : %02X %02X %02X %02X %02X",
+             f.type,
+             f.data1,
+             f.data2,
+             f.data3,
+             f.crc1,
+             f.crc2);
+}
+
+// Handlers End
+
 
 
 
