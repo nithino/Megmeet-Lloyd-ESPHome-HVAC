@@ -14,15 +14,11 @@ MegmeetUART = megmeet_uart_ns.class_(
     uart.UARTDevice,
 )
 
-CONFIG_SCHEMA = (
-    cv.Schema(
-        {
-            cv.GenerateID(): cv.declare_id(MegmeetUART),
-        }
-    )
-    .extend(uart.UART_DEVICE_SCHEMA)
-    .extend(cv.COMPONENT_SCHEMA)
-)
+CONFIG_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.declare_id(MegmeetUART),
+    }
+).extend(uart.UART_DEVICE_SCHEMA).extend(cv.COMPONENT_SCHEMA)
 
 
 async def to_code(config):
