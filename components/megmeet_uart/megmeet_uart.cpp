@@ -76,38 +76,14 @@ void MegmeetUART::dump_config()
     ESP_LOGCONFIG(TAG, "Megmeet UART");
 }
 
-void MegmeetUART::loop()
-{
-    static uint32_t last_byte_time = 0;
+void MegmeetUART::loop() {
+  static uint32_t last = 0;
 
-    while (available()) {
+  if (millis() - last > 5000) {
+    last = millis();
 
-        uint8_t byte;
-
-        if (!read_byte(&byte))
-            break;
-
-        uint32_t now = millis();
-
-#if MEGMEET_DEBUG
-        if (last_byte_time != 0) {
-            ESP_LOGD(TAG,
-                     "[+%4lu ms] %02X",
-                     (unsigned long)(now - last_byte_time),
-                     byte);
-        } else {
-            ESP_LOGD(TAG,
-                     "[startup] %02X",
-                     byte);
-        }
-#endif
-
-        last_byte_time = now;
-
-        buffer_push(byte);
-
-        dump_byte(byte);
-    }
+    ESP_LOGI(TAG, "Loop alive. UART available = %d", available());
+  }
 }
 
 }  // namespace megmeet_uart
