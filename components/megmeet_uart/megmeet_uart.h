@@ -27,25 +27,20 @@ class MegmeetUART : public Component, public uart::UARTDevice {
     uint8_t crc1;
     uint8_t crc2;
   };
+
   struct PacketState {
     bool valid = false;
-    Frame frame;
+    Frame frame{};
   };
-  
+
   PacketState packet_db_[256];
-  
-  void compare_frame(const Frame &frame);
-  void dump_frame(const char *title, const Frame &frame);
-  // Add this line
-  void dump_frame(const char *name, const Frame &frame);
 
   void process_frame(const Frame &frame);
 
-  void process_status(const Frame &frame);
-  void process_control(const Frame &frame);
-  void process_query(const Frame &frame);
-  void process_heartbeat(const Frame &frame);
-  void process_sensor(const Frame &frame);
+  void compare_frame(const Frame &frame);
+
+  void dump_frame(const char *title, const Frame &frame);
+
   void process_unknown(const Frame &frame);
 };
 
