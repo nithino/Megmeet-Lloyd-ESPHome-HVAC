@@ -80,6 +80,14 @@ void MegmeetUART::setup()
     ESP_LOGI(TAG, "========================================");
 }
 
+static void event_marker(const char *name)
+{
+    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, " EVENT : %s", name);
+    ESP_LOGI(TAG, "========================================");
+}
+
 void MegmeetUART::dump_config()
 {
     ESP_LOGCONFIG(TAG, "Megmeet UART");
@@ -137,34 +145,82 @@ void MegmeetUART::loop()
 
 void MegmeetUART::process_frame(const Frame &frame)
 {
-    switch (frame.type) {
-
-        case 0x09:
-            process_status(frame);
-            break;
-
-        case 0x2F:
-            process_control(frame);
-            break;
-
-        case 0x4C:
-            process_heartbeat(frame);
-            break;
-
-        case 0x61:
-            process_sensor(frame);
-            break;
-
-        case 0x98:
-            process_query(frame);
-            break;
-
-        default:
-            process_unknown(frame);
-            break;
-    }
+    compare_frame(frame);
 }
 
+void MegmeetUART::dump_frame(const char *title, const Frame &f)
+{
+    ESP_LOGI(TAG,
+             "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+             title,
+             f.header1,
+             f.header2,
+             f.proto1,
+             f.proto2,
+             f.type,
+             f.data1,
+             f.data2,
+             f.data3,
+             f.crc1,
+             f.crc2);
+}
+
+void MegmeetUART::compare_frame(const Frame &frame)
+{
+    PacketState &old = packet_db_[frame.type];
+
+    if (!old.valid) {
+        old.valid = true;
+        old.frame = frame;
+
+        dump_frame("NEW", frame);
+        return;
+    }
+
+    bool changed = false;
+
+    if (frame.proto1 != old.frame.proto1) changed = true;
+    if (frame.proto2 != old.frame.proto2) changed = true;
+    if (frame.data1  != old.frame.data1) changed = true;
+    if (frame.data2  != old.frame.data2) changed = true;
+    if (frame.data3  != old.frame.data3) changed = true;
+    if (frame.crc1   != old.frame.crc1) changed = true;
+    if (frame.crc2   != old.frame.crc2) changed = true;
+
+    if (!changed)
+        return;
+
+    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "====================================");
+    ESP_LOGI(TAG, "TYPE %02X CHANGED", frame.type);
+    ESP_LOGI(TAG, "====================================");
+
+    if (frame.proto1 != old.frame.proto1)
+        ESP_LOGI(TAG, "proto1 : %02X -> %02X", old.frame.proto1, frame.proto1);
+
+    if (frame.proto2 != old.frame.proto2)
+        ESP_LOGI(TAG, "proto2 : %02X -> %02X", old.frame.proto2, frame.proto2);
+
+    if (frame.data1 != old.frame.data1)
+        ESP_LOGI(TAG, "data1  : %02X -> %02X", old.frame.data1, frame.data1);
+
+    if (frame.data2 != old.frame.data2)
+        ESP_LOGI(TAG, "data2  : %02X -> %02X", old.frame.data2, frame.data2);
+
+    if (frame.data3 != old.frame.data3)
+        ESP_LOGI(TAG, "data3  : %02X -> %02X", old.frame.data3, frame.data3);
+
+    if (frame.crc1 != old.frame.crc1)
+        ESP_LOGI(TAG, "byte8  : %02X -> %02X", old.frame.crc1, frame.crc1);
+
+    if (frame.crc2 != old.frame.crc2)
+        ESP_LOGI(TAG, "byte9  : %02X -> %02X", old.frame.crc2, frame.crc2);
+
+    dump_frame("OLD", old.frame);
+    dump_frame("NEW", frame);
+
+    old.frame = frame;
+}
 
 
 // Helpers
@@ -173,23 +229,6 @@ void MegmeetUART::process_frame(const Frame &frame)
 // Helpers End
 
 // Handlers //
-
-void MegmeetUART::dump_frame(const char *name, const Frame &f)
-{
-    ESP_LOGI(TAG,
-        "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-        name,
-        f.header1,
-        f.header2,
-        f.proto1,
-        f.proto2,
-        f.type,
-        f.data1,
-        f.data2,
-        f.data3,
-        f.crc1,
-        f.crc2);
-}
 
 void MegmeetUART::process_control(const Frame &f)
 {
