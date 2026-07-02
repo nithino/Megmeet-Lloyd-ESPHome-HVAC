@@ -1,254 +1,195 @@
 #include "megmeet_uart.h"
+#include <cinttypes>
+#include <cstdio>
 
 namespace esphome {
 namespace megmeet_uart {
 
 static const char *const TAG = "megmeet_uart";
 
-#define MEGMEET_DEBUG 1
+void MegmeetUART::setup() { ESP_LOGCONFIG(TAG, "Setting up Megmeet UART..."); }
 
-// -----------------------------------------------------------------------------
-// RX Ring Buffer
-// -----------------------------------------------------------------------------
-
-static constexpr size_t RX_BUFFER_SIZE = 512;
-
-static uint8_t rx_buffer[RX_BUFFER_SIZE];
-static size_t rx_head = 0;
-static size_t rx_tail = 0;
-
-// -----------------------------------------------------------------------------
-// Helper Functions
-// -----------------------------------------------------------------------------
-static uint16_t crc16(const uint8_t *data, size_t len)
-{
-    uint16_t crc = 0;
-
-    for (size_t i = 0; i < len; i++)
-        crc += data[i];
-
-    return crc;
+void MegmeetUART::dump_config() {
+  ESP_LOGCONFIG(TAG, "Megmeet UART:");
+  LOG_SENSOR("  ", "Status Raw", this->status_raw_sensor_);
+  LOG_SENSOR("  ", "Control Setpoint Raw", this->control_setpoint_raw_sensor_);
+  LOG_SENSOR("  ", "Heartbeat Tick", this->heartbeat_tick_sensor_);
+  LOG_TEXT_SENSOR("  ", "Last Status Frame", this->last_status_frame_sensor_);
+  LOG_TEXT_SENSOR("  ", "Last Control Frame", this->last_control_frame_sensor_);
+  LOG_TEXT_SENSOR("  ", "Last Heartbeat Frame", this->last_heartbeat_frame_sensor_);
+  LOG_TEXT_SENSOR("  ", "Last Unknown Frame", this->last_unknown_frame_sensor_);
 }
 
-static inline void dump_byte(uint8_t byte)
-{
-#if MEGMEET_DEBUG
-    ESP_LOGI(TAG, "%02X", byte);
-#endif
-}
+// -----------------------------------------------------------------------
+// Byte stream -> frames
+// -----------------------------------------------------------------------
 
-static inline bool buffer_full()
-{
-    return ((rx_head + 1) % RX_BUFFER_SIZE) == rx_tail;
-}
+void MegmeetUART::loop() {
+  while (this->available()) {
+    uint8_t b;
+    if (!this->read_byte(&b))
+      break;
+    rx_buffer_.push_back(b);
+  }
 
-static inline bool buffer_empty()
-{
-    return rx_head == rx_tail;
-}
-
-static inline void buffer_push(uint8_t b)
-{
-    if (buffer_full()) {
-        ESP_LOGW(TAG, "RX buffer overflow, dropping oldest byte");
-        rx_tail = (rx_tail + 1) % RX_BUFFER_SIZE;
+  while (rx_buffer_.size() >= 2) {
+    // Resync on the 55 35 header, discarding stray bytes.
+    if (!(rx_buffer_[0] == 0x55 && rx_buffer_[1] == 0x35)) {
+      rx_buffer_.erase(rx_buffer_.begin());
+      continue;
     }
 
-    rx_buffer[rx_head] = b;
-    rx_head = (rx_head + 1) % RX_BUFFER_SIZE;
+    // Every frame observed so far is a fixed 10 bytes (len byte is
+    // always 0x07). Wait for a full frame before parsing.
+    if (rx_buffer_.size() < 10)
+      return;
+
+    Frame frame{};
+    frame.header1 = rx_buffer_[0];
+    frame.header2 = rx_buffer_[1];
+    frame.len = rx_buffer_[2];
+    frame.sub_id = rx_buffer_[3];
+    frame.type = rx_buffer_[4];
+    frame.data1 = rx_buffer_[5];
+    frame.data2 = rx_buffer_[6];
+    frame.data3 = rx_buffer_[7];
+    frame.tail1 = rx_buffer_[8];
+    frame.tail2 = rx_buffer_[9];
+
+    process_frame(frame);
+
+    rx_buffer_.erase(rx_buffer_.begin(), rx_buffer_.begin() + 10);
+  }
 }
 
-static inline bool buffer_pop(uint8_t &b)
-{
-    if (buffer_empty())
-        return false;
+void MegmeetUART::process_frame(const Frame &frame) {
+  frame_count_++;
 
-    b = rx_buffer[rx_tail];
-    rx_tail = (rx_tail + 1) % RX_BUFFER_SIZE;
+  switch (frame.type) {
+    case TYPE_HEARTBEAT:
+      handle_heartbeat_(frame);
+      break;
+    case TYPE_STATUS:
+      handle_status_(frame);
+      break;
+    case TYPE_CONTROL:
+      handle_control_(frame);
+      break;
+    case TYPE_QUERY:
+      handle_query_(frame);
+      break;
+    default:
+      unknown_count_++;
+      handle_unknown_(frame);
+      break;
+  }
 
-    return true;
+  // Background diff-logger: prints whenever a given TYPE's payload
+  // changes from what we last saw. This is the tool that found the
+  // CONTROL setpoint stepping pattern -- leave it running at DEBUG level
+  // for continued reverse engineering.
+  compare_frame_(frame);
 }
 
-// -----------------------------------------------------------------------------
-// Component
-// -----------------------------------------------------------------------------
-
-void MegmeetUART::setup()
-{
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, " Megmeet UART Protocol Analyzer");
-    ESP_LOGI(TAG, "========================================");
+std::string MegmeetUART::frame_to_hex_(const Frame &f) {
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X", f.header1, f.header2, f.len,
+           f.sub_id, f.type, f.data1, f.data2, f.data3, f.tail1, f.tail2);
+  return std::string(buf);
 }
 
-static void event_marker(const char *name)
-{
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, " EVENT : %s", name);
-    ESP_LOGI(TAG, "========================================");
+void MegmeetUART::publish_text_(text_sensor::TextSensor *sensor, const std::string &value) {
+  if (sensor == nullptr)
+    return;
+  if (sensor->has_state() && sensor->state == value)
+    return;
+  sensor->publish_state(value);
 }
 
-void MegmeetUART::dump_config()
-{
-    ESP_LOGCONFIG(TAG, "Megmeet UART");
+void MegmeetUART::publish_val_(sensor::Sensor *sensor, float value) {
+  if (sensor == nullptr)
+    return;
+  if (sensor->has_state() && sensor->state == value)
+    return;
+  sensor->publish_state(value);
 }
 
+// -----------------------------------------------------------------------
+// Frame type handlers
+//
+// CAVEAT: tail1/tail2 do not behave like a checksum of the other 8
+// bytes -- identical 8-byte payloads have been observed with different
+// tail bytes, ruling out every common 8-bit sum/XOR/CRC-8 scheme. Until
+// that's nailed down, treat status_raw / control_setpoint_raw /
+// heartbeat_tick as RAW diagnostic values, not calibrated readings.
+// Calibrate them by comparing against a real thermometer / the AC's own
+// display, then convert with a lambda in your YAML (see README).
+// -----------------------------------------------------------------------
 
-
-// Loop
-
-void MegmeetUART::loop()
-{
-    static std::vector<uint8_t> rx;
-
-    while (available()) {
-        uint8_t b;
-        if (!read_byte(&b))
-            break;
-
-        rx.push_back(b);
-    }
-
-    while (rx.size() >= 2) {
-
-        // Find header
-        if (!(rx[0] == 0x55 && rx[1] == 0x35)) {
-            rx.erase(rx.begin());
-            continue;
-        }
-
-        // Wait until a full 10-byte frame exists
-        if (rx.size() < 10)
-            return;
-
-        Frame frame;
-
-        frame.header1 = rx[0];
-        frame.header2 = rx[1];
-        frame.proto1  = rx[2];
-        frame.proto2  = rx[3];
-        frame.type    = rx[4];
-        frame.data1   = rx[5];
-        frame.data2   = rx[6];
-        frame.data3   = rx[7];
-        frame.crc1    = rx[8];
-        frame.crc2    = rx[9];
-
-        process_frame(frame);
-
-        rx.erase(rx.begin(), rx.begin() + 10);
-    }
+void MegmeetUART::handle_heartbeat_(const Frame &frame) {
+  ESP_LOGD(TAG, "HEARTBEAT  %s", frame_to_hex_(frame).c_str());
+  publish_text_(last_heartbeat_frame_sensor_, frame_to_hex_(frame));
+  // tail1 has been constant (0x40) in every capture; tail2 is the
+  // fast-moving byte. Exposed raw purely for continued RE -- it does
+  // not currently map to anything meaningful.
+  publish_val_(heartbeat_tick_sensor_, frame.tail2);
 }
 
-// Loop End
-
-
-void MegmeetUART::process_frame(const Frame &frame)
-{
-    compare_frame(frame);
+void MegmeetUART::handle_status_(const Frame &frame) {
+  ESP_LOGD(TAG, "STATUS     %s", frame_to_hex_(frame).c_str());
+  publish_text_(last_status_frame_sensor_, frame_to_hex_(frame));
+  // tail1 oscillated in a narrow band (~0x6F-0x74) while the unit was
+  // otherwise idle -- consistent with a live analog reading such as
+  // coil or room temperature. Best current candidate, unconfirmed.
+  publish_val_(status_raw_sensor_, frame.tail1);
 }
 
-void MegmeetUART::dump_frame(const char *title, const Frame &f)
-{
-    ESP_LOGI(TAG,
-             "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-             title,
-             f.header1,
-             f.header2,
-             f.proto1,
-             f.proto2,
-             f.type,
-             f.data1,
-             f.data2,
-             f.data3,
-             f.crc1,
-             f.crc2);
+void MegmeetUART::handle_control_(const Frame &frame) {
+  ESP_LOGD(TAG, "CONTROL    %s", frame_to_hex_(frame).c_str());
+  publish_text_(last_control_frame_sensor_, frame_to_hex_(frame));
+  // tail1 stepped in clean increments of 2 across observed CONTROL
+  // frames (0xE8 -> 0xE6 -> 0xE4 -> 0xE2 -> 0xE0 -> 0xDE), the cleanest
+  // pattern found so far -- best candidate for a setpoint temperature
+  // field. Formula (scale/offset) is still unconfirmed.
+  publish_val_(control_setpoint_raw_sensor_, frame.tail1);
 }
 
-void MegmeetUART::compare_frame(const Frame &frame)
-{
-    PacketState &old = packet_db_[frame.type];
+void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
 
-    if (!old.valid) {
-        old.valid = true;
-        old.frame = frame;
+void MegmeetUART::handle_unknown_(const Frame &frame) {
+  ESP_LOGI(TAG, "UNKNOWN    %s  (type=0x%02X, %" PRIu32 " unknown frames seen)", frame_to_hex_(frame).c_str(),
+           frame.type, unknown_count_);
+  publish_text_(last_unknown_frame_sensor_, frame_to_hex_(frame));
+}
 
-        dump_frame("NEW", frame);
-        return;
-    }
+// -----------------------------------------------------------------------
+// Change-diff logger
+// -----------------------------------------------------------------------
 
-    bool changed = false;
+void MegmeetUART::compare_frame_(const Frame &frame) {
+  PacketState &old = packet_db_[frame.type];
 
-    if (frame.proto1 != old.frame.proto1) changed = true;
-    if (frame.proto2 != old.frame.proto2) changed = true;
-    if (frame.data1  != old.frame.data1) changed = true;
-    if (frame.data2  != old.frame.data2) changed = true;
-    if (frame.data3  != old.frame.data3) changed = true;
-    if (frame.crc1   != old.frame.crc1) changed = true;
-    if (frame.crc2   != old.frame.crc2) changed = true;
-
-    if (!changed)
-        return;
-
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "====================================");
-    ESP_LOGI(TAG, "TYPE %02X CHANGED", frame.type);
-    ESP_LOGI(TAG, "====================================");
-
-    if (frame.proto1 != old.frame.proto1)
-        ESP_LOGI(TAG, "proto1 : %02X -> %02X", old.frame.proto1, frame.proto1);
-
-    if (frame.proto2 != old.frame.proto2)
-        ESP_LOGI(TAG, "proto2 : %02X -> %02X", old.frame.proto2, frame.proto2);
-
-    if (frame.data1 != old.frame.data1)
-        ESP_LOGI(TAG, "data1  : %02X -> %02X", old.frame.data1, frame.data1);
-
-    if (frame.data2 != old.frame.data2)
-        ESP_LOGI(TAG, "data2  : %02X -> %02X", old.frame.data2, frame.data2);
-
-    if (frame.data3 != old.frame.data3)
-        ESP_LOGI(TAG, "data3  : %02X -> %02X", old.frame.data3, frame.data3);
-
-    if (frame.crc1 != old.frame.crc1)
-        ESP_LOGI(TAG, "byte8  : %02X -> %02X", old.frame.crc1, frame.crc1);
-
-    if (frame.crc2 != old.frame.crc2)
-        ESP_LOGI(TAG, "byte9  : %02X -> %02X", old.frame.crc2, frame.crc2);
-
-    dump_frame("OLD", old.frame);
-    dump_frame("NEW", frame);
-
+  if (!old.valid) {
+    old.valid = true;
     old.frame = frame;
+    return;
+  }
+
+  // tail2 is deliberately excluded here -- it moves on nearly every
+  // frame and would make this log useless as a "did anything meaningful
+  // change" signal. tail1 is included since it's the field that
+  // actually correlates with real AC state (see handlers above).
+  bool changed = frame.sub_id != old.frame.sub_id || frame.data1 != old.frame.data1 ||
+                 frame.data2 != old.frame.data2 || frame.data3 != old.frame.data3 || frame.tail1 != old.frame.tail1;
+
+  if (!changed)
+    return;
+
+  ESP_LOGD(TAG, "type 0x%02X payload changed: %s -> %s", frame.type, frame_to_hex_(old.frame).c_str(),
+           frame_to_hex_(frame).c_str());
+
+  old.frame = frame;
 }
-
-
-// Helpers
-
-
-// Helpers End
-
-// Handlers //
-
-void MegmeetUART::process_unknown(const Frame &f)
-{
-    ESP_LOGI(TAG,
-        "UNKNOWN : "
-        "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-        f.header1,
-        f.header2,
-        f.proto1,
-        f.proto2,
-        f.type,
-        f.data1,
-        f.data2,
-        f.data3,
-        f.crc1,
-        f.crc2);
-}
-
-// Handlers End
-
 
 }  // namespace megmeet_uart
 }  // namespace esphome
