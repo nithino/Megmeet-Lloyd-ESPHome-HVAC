@@ -91,70 +91,44 @@ void MegmeetUART::dump_config()
 
 void MegmeetUART::loop()
 {
-    static uint8_t frame[10];
-    static uint8_t pos = 0;
-
-    static uint32_t packet_counter = 0;
-    static uint32_t last_packet = 0;
+    static std::vector<uint8_t> rx;
 
     while (available()) {
-
         uint8_t b;
         if (!read_byte(&b))
+            break;
+
+        rx.push_back(b);
+    }
+
+    while (rx.size() >= 2) {
+
+        // Find header
+        if (!(rx[0] == 0x55 && rx[1] == 0x35)) {
+            rx.erase(rx.begin());
+            continue;
+        }
+
+        // Wait until a full 10-byte frame exists
+        if (rx.size() < 10)
             return;
 
-        switch (pos) {
+        Frame frame;
 
-        // Wait for 0x55
-        case 0:
-            if (b == 0x55) {
-                frame[0] = b;
-                pos = 1;
-            }
-            break;
+        frame.header1 = rx[0];
+        frame.header2 = rx[1];
+        frame.proto1  = rx[2];
+        frame.proto2  = rx[3];
+        frame.type    = rx[4];
+        frame.data1   = rx[5];
+        frame.data2   = rx[6];
+        frame.data3   = rx[7];
+        frame.crc1    = rx[8];
+        frame.crc2    = rx[9];
 
-        // Wait for 0x35
-        case 1:
-            if (b == 0x35) {
-                frame[1] = b;
-                pos = 2;
-            } else if (b == 0x55) {
-                frame[0] = 0x55;
-                pos = 1;
-            } else {
-                pos = 0;
-            }
-            break;
+        process_frame(frame);
 
-        default:
-            frame[pos++] = b;
-
-            if (pos == sizeof(frame)) {
-
-                uint32_t now = millis();
-
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG,
-                         "========== Packet %lu (+%lu ms) ==========",
-                         (unsigned long) ++packet_counter,
-                         (unsigned long) (now - last_packet));
-
-                last_packet = now;
-
-                char line[64];
-                int len = 0;
-
-                for (int i = 0; i < 10; i++) {
-                    len += sprintf(line + len, "%02X ", frame[i]);
-                }
-
-                ESP_LOGI(TAG, "%s", line);
-
-                pos = 0;
-            }
-
-            break;
-        }
+        rx.erase(rx.begin(), rx.begin() + 10);
     }
 }
 
@@ -243,7 +217,19 @@ void MegmeetUART::process_sensor(const Frame &f)
 
 void MegmeetUART::process_unknown(const Frame &f)
 {
-  dump_frame("UNKNOWN", f);
+    ESP_LOGI(TAG,
+        "UNKNOWN : "
+        "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+        f.header1,
+        f.header2,
+        f.proto1,
+        f.proto2,
+        f.type,
+        f.data1,
+        f.data2,
+        f.data3,
+        f.crc1,
+        f.crc2);
 }
 
 // Handlers End
