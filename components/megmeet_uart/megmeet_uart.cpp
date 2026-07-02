@@ -20,6 +20,15 @@ static size_t rx_tail = 0;
 // -----------------------------------------------------------------------------
 // Helper Functions
 // -----------------------------------------------------------------------------
+static uint16_t crc16(const uint8_t *data, size_t len)
+{
+    uint16_t crc = 0;
+
+    for (size_t i = 0; i < len; i++)
+        crc += data[i];
+
+    return crc;
+}
 
 static inline void dump_byte(uint8_t byte)
 {
@@ -82,17 +91,70 @@ void MegmeetUART::dump_config()
 
 void MegmeetUART::loop()
 {
+    static uint8_t frame[10];
+    static uint8_t pos = 0;
+
+    static uint32_t packet_counter = 0;
+    static uint32_t last_packet = 0;
+
     while (available()) {
 
         uint8_t b;
-
         if (!read_byte(&b))
+            return;
+
+        switch (pos) {
+
+        // Wait for 0x55
+        case 0:
+            if (b == 0x55) {
+                frame[0] = b;
+                pos = 1;
+            }
             break;
 
-        ESP_LOGI(TAG,
-                 "%10lu  %02X",
-                 (unsigned long) micros(),
-                 b);
+        // Wait for 0x35
+        case 1:
+            if (b == 0x35) {
+                frame[1] = b;
+                pos = 2;
+            } else if (b == 0x55) {
+                frame[0] = 0x55;
+                pos = 1;
+            } else {
+                pos = 0;
+            }
+            break;
+
+        default:
+            frame[pos++] = b;
+
+            if (pos == sizeof(frame)) {
+
+                uint32_t now = millis();
+
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG,
+                         "========== Packet %lu (+%lu ms) ==========",
+                         (unsigned long) ++packet_counter,
+                         (unsigned long) (now - last_packet));
+
+                last_packet = now;
+
+                char line[64];
+                int len = 0;
+
+                for (int i = 0; i < 10; i++) {
+                    len += sprintf(line + len, "%02X ", frame[i]);
+                }
+
+                ESP_LOGI(TAG, "%s", line);
+
+                pos = 0;
+            }
+
+            break;
+        }
     }
 }
 
