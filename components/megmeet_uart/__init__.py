@@ -19,6 +19,7 @@ MegmeetUART = megmeet_uart_ns.class_(
 # All entities are optional -- omit any you don't want exposed to HA.
 CONF_STATUS_RAW = "status_raw"
 CONF_CONTROL_SETPOINT_RAW = "control_setpoint_raw"
+CONF_CONTROL_RAMP_RAW = "control_ramp_raw"
 CONF_HEARTBEAT_TICK = "heartbeat_tick"
 CONF_LAST_STATUS_FRAME = "last_status_frame"
 CONF_LAST_CONTROL_FRAME = "last_control_frame"
@@ -38,6 +39,17 @@ CONFIG_SCHEMA = (
             ),
             cv.Optional(CONF_CONTROL_SETPOINT_RAW): sensor.sensor_schema(
                 icon="mdi:thermometer-lines",
+                accuracy_decimals=0,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            # Compressor ramp/step counter -- lives in the same CONTROL
+            # frame's tail1 byte as the setpoint but in a distinct,
+            # much lower numeric range. Rises while the compressor is
+            # ramping toward a new stage and levels off once it
+            # settles; a "is the compressor still changing speed"
+            # diagnostic, not a temperature.
+            cv.Optional(CONF_CONTROL_RAMP_RAW): sensor.sensor_schema(
+                icon="mdi:fan-clock",
                 accuracy_decimals=0,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
@@ -81,6 +93,10 @@ async def to_code(config):
     if CONF_CONTROL_SETPOINT_RAW in config:
         sens = await sensor.new_sensor(config[CONF_CONTROL_SETPOINT_RAW])
         cg.add(var.set_control_setpoint_raw_sensor(sens))
+
+    if CONF_CONTROL_RAMP_RAW in config:
+        sens = await sensor.new_sensor(config[CONF_CONTROL_RAMP_RAW])
+        cg.add(var.set_control_ramp_raw_sensor(sens))
 
     if CONF_HEARTBEAT_TICK in config:
         sens = await sensor.new_sensor(config[CONF_HEARTBEAT_TICK])
