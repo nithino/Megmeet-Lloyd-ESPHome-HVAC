@@ -16,5 +16,13 @@ uart:
   baud_rate: 9600
   parity: EVEN
 
-sensor:
-  - platform: megmeet_uart
+megmeet_uart:
+  id: megmeet
+  status_raw:
+    name: "AC Status Raw"
+  control_setpoint_raw:
+    name: "AC Control Setpoint Raw"
+  control_ramp_raw:
+    name: "AC Compressor Ramp Raw"
+  heartbeat_tick:
+    name: "AC Heartbeat Tick"
