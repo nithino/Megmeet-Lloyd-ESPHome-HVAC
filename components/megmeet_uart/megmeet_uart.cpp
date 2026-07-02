@@ -122,36 +122,30 @@ void MegmeetUART::publish_val_(sensor::Sensor *sensor, float value) {
 // tail bytes, ruling out every common 8-bit sum/XOR/CRC-8 scheme. Until
 // that's nailed down, treat status_raw / control_setpoint_raw /
 // heartbeat_tick as RAW diagnostic values, not calibrated readings.
-// Calibrate them by comparing against a real thermometer / the AC's own
-// display, then convert with a lambda in your YAML (see README).
 // -----------------------------------------------------------------------
 
 void MegmeetUART::handle_heartbeat_(const Frame &frame) {
   ESP_LOGD(TAG, "HEARTBEAT  %s", frame_to_hex_(frame).c_str());
   publish_text_(last_heartbeat_frame_sensor_, frame_to_hex_(frame));
-  // tail1 has been constant (0x40) in every capture; tail2 is the
-  // fast-moving byte. Exposed raw purely for continued RE -- it does
-  // not currently map to anything meaningful.
   publish_val_(heartbeat_tick_sensor_, frame.tail2);
 }
 
 void MegmeetUART::handle_status_(const Frame &frame) {
   ESP_LOGD(TAG, "STATUS     %s", frame_to_hex_(frame).c_str());
   publish_text_(last_status_frame_sensor_, frame_to_hex_(frame));
-  // tail1 oscillated in a narrow band (~0x6F-0x74) while the unit was
-  // otherwise idle -- consistent with a live analog reading such as
-  // coil or room temperature. Best current candidate, unconfirmed.
   publish_val_(status_raw_sensor_, frame.tail1);
 }
 
 void MegmeetUART::handle_control_(const Frame &frame) {
   ESP_LOGD(TAG, "CONTROL    %s", frame_to_hex_(frame).c_str());
   publish_text_(last_control_frame_sensor_, frame_to_hex_(frame));
-  // tail1 stepped in clean increments of 2 across observed CONTROL
-  // frames (0xE8 -> 0xE6 -> 0xE4 -> 0xE2 -> 0xE0 -> 0xDE), the cleanest
-  // pattern found so far -- best candidate for a setpoint temperature
-  // field. Formula (scale/offset) is still unconfirmed.
   publish_val_(control_setpoint_raw_sensor_, frame.tail1);
+
+  // Keep a raw copy around for the button platform to replay/modify.
+  // Only overwritten by frames we actually received from the mainboard,
+  // never by anything we transmitted ourselves.
+  last_control_frame_ = frame;
+  control_frame_valid_ = true;
 }
 
 void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
@@ -175,10 +169,6 @@ void MegmeetUART::compare_frame_(const Frame &frame) {
     return;
   }
 
-  // tail2 is deliberately excluded here -- it moves on nearly every
-  // frame and would make this log useless as a "did anything meaningful
-  // change" signal. tail1 is included since it's the field that
-  // actually correlates with real AC state (see handlers above).
   bool changed = frame.sub_id != old.frame.sub_id || frame.data1 != old.frame.data1 ||
                  frame.data2 != old.frame.data2 || frame.data3 != old.frame.data3 || frame.tail1 != old.frame.tail1;
 
@@ -189,6 +179,47 @@ void MegmeetUART::compare_frame_(const Frame &frame) {
            frame_to_hex_(frame).c_str());
 
   old.frame = frame;
+}
+
+// -----------------------------------------------------------------------
+// Experimental TX (see the big caveat block at the top of the .h file)
+// -----------------------------------------------------------------------
+
+void MegmeetUART::transmit_frame_(const Frame &f) {
+  uint8_t buf[10] = {f.header1, f.header2, f.len, f.sub_id, f.type, f.data1, f.data2, f.data3, f.tail1, f.tail2};
+  ESP_LOGW(TAG, "TX (experimental, unconfirmed protocol): %s", frame_to_hex_(f).c_str());
+  this->write_array(buf, sizeof(buf));
+}
+
+void MegmeetUART::replay_last_control_frame() {
+  if (!control_frame_valid_) {
+    ESP_LOGW(TAG, "No CONTROL frame captured yet -- nothing to replay. Wait for the unit to send one first.");
+    return;
+  }
+  transmit_frame_(last_control_frame_);
+}
+
+void MegmeetUART::adjust_control_setpoint(int delta_steps) {
+  if (!control_frame_valid_) {
+    ESP_LOGW(TAG, "No CONTROL frame captured yet -- nothing to base the change on.");
+    return;
+  }
+
+  Frame f = last_control_frame_;
+  int new_tail1 = static_cast<int>(f.tail1) + delta_steps * 2;
+
+  if (new_tail1 < 0 || new_tail1 > 255) {
+    ESP_LOGW(TAG, "Setpoint step out of byte range (%d), ignoring", new_tail1);
+    return;
+  }
+
+  f.tail1 = static_cast<uint8_t>(new_tail1);
+  // tail2 intentionally left as whatever was captured alongside the
+  // OLD tail1 -- we have no formula to recompute it for the new value.
+  // This is the actual experiment: if the AC reacts anyway, tail2
+  // either isn't checked, or isn't a function of tail1 the way we
+  // assumed. If nothing happens, that's evidence tail2 does matter.
+  transmit_frame_(f);
 }
 
 }  // namespace megmeet_uart
