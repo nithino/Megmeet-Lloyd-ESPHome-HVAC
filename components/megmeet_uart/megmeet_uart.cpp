@@ -190,6 +190,23 @@ void MegmeetUART::dump_frame(const char *name, const Frame &f)
 
 // Handlers //
 
+void MegmeetUART::dump_frame(const char *name, const Frame &f)
+{
+    ESP_LOGI(TAG,
+        "%-10s %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+        name,
+        f.header1,
+        f.header2,
+        f.proto1,
+        f.proto2,
+        f.type,
+        f.data1,
+        f.data2,
+        f.data3,
+        f.crc1,
+        f.crc2);
+}
+
 void MegmeetUART::process_control(const Frame &f)
 {
   dump_frame("CONTROL", f);
