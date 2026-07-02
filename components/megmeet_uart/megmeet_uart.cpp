@@ -13,6 +13,7 @@ void MegmeetUART::dump_config() {
   ESP_LOGCONFIG(TAG, "Megmeet UART:");
   LOG_SENSOR("  ", "Status Raw", this->status_raw_sensor_);
   LOG_SENSOR("  ", "Control Setpoint Raw", this->control_setpoint_raw_sensor_);
+  LOG_SENSOR("  ", "Control Ramp Raw", this->control_ramp_raw_sensor_);
   LOG_SENSOR("  ", "Heartbeat Tick", this->heartbeat_tick_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Status Frame", this->last_status_frame_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Control Frame", this->last_control_frame_sensor_);
@@ -139,13 +140,21 @@ void MegmeetUART::handle_status_(const Frame &frame) {
 void MegmeetUART::handle_control_(const Frame &frame) {
   ESP_LOGD(TAG, "CONTROL    %s", frame_to_hex_(frame).c_str());
   publish_text_(last_control_frame_sensor_, frame_to_hex_(frame));
-  publish_val_(control_setpoint_raw_sensor_, frame.tail1);
 
-  // Keep a raw copy around for the button platform to replay/modify.
-  // Only overwritten by frames we actually received from the mainboard,
-  // never by anything we transmitted ourselves.
-  last_control_frame_ = frame;
-  control_frame_valid_ = true;
+  // tail1 carries two unrelated, interleaved values on this frame type
+  // -- see the classification note at the top of the .h file. Route
+  // each frame to the right sensor, and only ever remember genuine
+  // setpoint-cluster frames as the "last CONTROL frame" used for
+  // replay/adjust, so a ramp-counter value can never get sent back to
+  // the mainboard mislabeled as a setpoint.
+  if (frame.tail1 >= CONTROL_SETPOINT_CLUSTER_MIN) {
+    publish_val_(control_setpoint_raw_sensor_, frame.tail1);
+
+    last_control_frame_ = frame;
+    control_frame_valid_ = true;
+  } else {
+    publish_val_(control_ramp_raw_sensor_, frame.tail1);
+  }
 }
 
 void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
