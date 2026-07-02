@@ -28,10 +28,17 @@ namespace megmeet_uart {
 //   bytes -- identical 9-byte payloads have been observed on the wire
 //   with different T1/T2 values (verified against every common 8-bit
 //   sum/XOR/CRC-8 scheme). T1 looks like a real, independently-varying
-//   value per frame type (see notes in the .cpp); T2 tracks it closely
-//   enough to still look checksum-like but the formula isn't confirmed.
-//   Nothing in this component depends on being able to compute T1/T2 --
-//   it's a read-only sniffer.
+//   value per frame type; T2 tracks it closely enough to still look
+//   checksum-like but the formula isn't confirmed.
+//
+// EVERYTHING below that transmits (replay_last_control_frame,
+// adjust_control_setpoint) is an EXPERIMENT, not a confirmed working
+// write path. All frames captured so far are things the mainboard SENT;
+// we have zero confirmed examples of a frame the mainboard ACCEPTS as a
+// command. Sending it a byte-for-byte copy of its own broadcast is a
+// guess, not a known-good protocol. Treat every send as a probe: watch
+// the AC directly after pressing, and don't be surprised if nothing
+// happens -- that's expected until proven otherwise, not a bug.
 // -----------------------------------------------------------------------
 
 class MegmeetUART : public Component, public uart::UARTDevice {
@@ -51,6 +58,21 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   void set_last_control_frame_sensor(text_sensor::TextSensor *s) { last_control_frame_sensor_ = s; }
   void set_last_heartbeat_frame_sensor(text_sensor::TextSensor *s) { last_heartbeat_frame_sensor_ = s; }
   void set_last_unknown_frame_sensor(text_sensor::TextSensor *s) { last_unknown_frame_sensor_ = s; }
+
+  // --- Experimental TX, called from the button platform ---
+
+  // Re-send the most recently captured CONTROL frame, byte-for-byte,
+  // unmodified. Null-hypothesis test: does the mainboard react to
+  // receiving a copy of its own last broadcast at all?
+  void replay_last_control_frame();
+
+  // Re-send the most recently captured CONTROL frame with tail1 shifted
+  // by delta_steps * 2 (2 is the step size observed between real
+  // captured setpoint values). tail2 is copied unchanged from the
+  // captured frame -- we don't have a formula to recompute it, so this
+  // is deliberately testing whether the mainboard cares about tail2
+  // matching tail1, or ignores/recomputes it on its own.
+  void adjust_control_setpoint(int delta_steps);
 
  protected:
   struct Frame {
@@ -82,6 +104,9 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   uint32_t frame_count_{0};
   uint32_t unknown_count_{0};
 
+  Frame last_control_frame_{};
+  bool control_frame_valid_{false};
+
   void process_frame(const Frame &frame);
 
   void handle_heartbeat_(const Frame &frame);
@@ -95,6 +120,7 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   std::string frame_to_hex_(const Frame &frame);
   void publish_text_(text_sensor::TextSensor *sensor, const std::string &value);
   void publish_val_(sensor::Sensor *sensor, float value);
+  void transmit_frame_(const Frame &frame);
 
   sensor::Sensor *status_raw_sensor_{nullptr};
   sensor::Sensor *control_setpoint_raw_sensor_{nullptr};
