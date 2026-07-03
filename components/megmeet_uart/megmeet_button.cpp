@@ -17,6 +17,15 @@ void MegmeetButton::press_action() {
     case MegmeetButtonAction::SETPOINT_STEP_DOWN:
       this->hub_->adjust_control_setpoint(-1);
       break;
+    case MegmeetButtonAction::REPLAY_LAST_SETPOINT_EVENT:
+      this->hub_->replay_last_setpoint_event();
+      break;
+    case MegmeetButtonAction::SETPOINT_EVENT_STEP_UP:
+      this->hub_->adjust_setpoint_event(1);
+      break;
+    case MegmeetButtonAction::SETPOINT_EVENT_STEP_DOWN:
+      this->hub_->adjust_setpoint_event(-1);
+      break;
   }
 }
 
