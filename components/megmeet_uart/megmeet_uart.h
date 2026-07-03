@@ -69,12 +69,30 @@ namespace megmeet_uart {
 // IMPORTANT: 0x40=0x0E means the OFF command was received, not that the
 // AC has actually stopped. This unit runs a ~60s shutdown countdown
 // (the physical flap visibly closes at the end of it) before it's
-// really off. Controlled test (power off, wait 90s+ uninterrupted)
-// showed STATUS and CONTROL tail1 both drop to 0x00 and then stop
-// updating entirely, ~59-64s after the off command -- that's the real
-// "AC has stopped" signal. See ac_running_sensor_ / handle_status_().
-// 0x00 was never observed on STATUS during normal operation in any
-// capture so far, but this is one data point, not an exhaustive proof.
+// really off.
+//
+// AC RUNNING (revised -- the first version of this was wrong, see
+// below): the reliable signal is NOT a specific STATUS value, it's
+// whether STATUS frames are being sent AT ALL. Two controlled tests:
+//   1. Power off, wait 90s+ uninterrupted: STATUS stopped updating
+//      right as the AC's flap physically closed (originally read as
+//      "value freezes at 0x00", see caveat below).
+//   2. Full ESP32 power-cycle while the AC was already off (steady
+//      state, not mid-countdown): during 86 CONFIRMED-off seconds
+//      before the next power-on press, ZERO STATUS frames arrived --
+//      HEARTBEAT and CONTROL kept flowing the whole time regardless.
+//      The very first STATUS frame arrived 231ms after the power-ON
+//      press, with a non-zero tail1 (0x1C). That directly disproves
+//      "tail1 == 0x00" as the off signal -- it happened to be 0x00 at
+//      the exact moment test 1 stopped, but that's not what off looks
+//      like in general; ABSENCE of STATUS is what off looks like.
+// Implemented as a staleness check: ac_running_sensor_ goes false if no
+// STATUS frame has arrived for AC_RUNNING_TIMEOUT_MS, true the instant
+// one arrives. The timeout is chosen well above the longest STATUS gap
+// seen during confirmed-running traffic in any capture so far (53s, in
+// a fan-speed test), with margin -- see AC_RUNNING_TIMEOUT_MS. STATUS
+// itself keeps behaving as a raw diagnostic value otherwise; the OLD
+// STATUS_STOPPED_VALUE/tail1-based logic has been removed.
 //
 // FAN SPEED: sub_id=0x05, event-driven like the above, but the mapping
 // is NOT fully nailed down -- deliberately exposed as a raw hex text
@@ -193,11 +211,13 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // broadcast frames (HEARTBEAT/STATUS/CONTROL/QUERY) use 0x08.
   static constexpr uint8_t SUB_ID_EVENT = 0x05;
 
-  // STATUS/CONTROL tail1 sitting at 0x00 (and no longer updating) is
-  // the confirmed signal that the AC has genuinely finished its
-  // shutdown countdown -- see block above. Tracked here so
-  // handle_status_() can drive ac_running_sensor_.
-  static constexpr uint8_t STATUS_STOPPED_VALUE = 0x00;
+  // ac_running_sensor_ goes false if no STATUS frame arrives for this
+  // long. Set well above the longest STATUS-to-STATUS gap observed
+  // during confirmed-running traffic across every capture so far (53s,
+  // in a fan-speed test) -- see the block above for the full reasoning.
+  // This is a heuristic margin, not a proven bound; if a longer running
+  // gap ever surfaces, this needs to grow accordingly.
+  static constexpr uint32_t AC_RUNNING_TIMEOUT_MS = 90000;
 
   std::vector<uint8_t> rx_buffer_;
   PacketState packet_db_[256];
@@ -213,7 +233,20 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   Frame last_control_frame_{};
   bool control_frame_valid_{false};
 
+  // Timestamp (millis()) of the last STATUS frame received, used by the
+  // loop()-driven staleness check that drives ac_running_sensor_. 0
+  // means "never seen one" -- see check_ac_running_() and the block
+  // above for why absence, not value, is the running/off signal.
+  uint32_t last_status_millis_{0};
+  bool status_ever_seen_{false};
+  // Set once in setup(). If STATUS is never seen at all (AC already off
+  // when this booted), check_ac_running_() falls back to timing out
+  // against this instead, so the sensor still converges to "false"
+  // within AC_RUNNING_TIMEOUT_MS rather than sitting at unknown forever.
+  uint32_t boot_millis_{0};
+
   void process_frame(const Frame &frame);
+  void check_ac_running_();
 
   void handle_heartbeat_(const Frame &frame);
   void handle_status_(const Frame &frame);
