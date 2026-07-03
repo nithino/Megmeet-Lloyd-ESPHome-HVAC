@@ -50,6 +50,20 @@ namespace megmeet_uart {
 // offset. All 5 presses in the test matched exactly (24 -> 23 -> 22 ->
 // 23 -> 24 -> 25). See handle_setpoint_event_().
 //
+// IMPORTANT, corrected after a bug was caught in send_short_setpoint_probe():
+// SETPOINT_EVENT (0x20) uses sub_id=0x08 -- the SAME sub_id as the main
+// HEARTBEAT/STATUS/CONTROL/QUERY broadcast channel -- NOT sub_id=0x05
+// like POWER/FAN/MODE below. This was wrongly assumed to match the
+// others (see the old SUB_ID_EVENT comment, now corrected) and wasn't
+// actually verified until a probe frame was sent with the wrong sub_id
+// and caught by comparing it against real captured bytes. Real captured
+// example: 55 35 07 08 20 00 10 00 1B CC -- sub_id is byte 4, 0x08.
+// Worth remembering as a real, unexplained asymmetry: setpoint changes
+// are event-driven like power/fan/mode, but ride the main channel while
+// those three use the separate one. Don't assume TYPE alone tells you
+// the sub_id for any frame type on this bus -- check real captured
+// bytes every time, as this incident demonstrates.
+//
 // CONTROL (0x2F) tail1 is NOT the setpoint -- that was an earlier,
 // wrong hypothesis based on a too-short capture window. Over a longer
 // (18 min) idle session it was shown to drift continuously in small
@@ -257,9 +271,16 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // unsupported Heat on a cooling-only unit). See block above.
   static constexpr uint8_t TYPE_MODE_EVENT = 0x10;
 
-  // All the event-driven frames above (setpoint/power/fan/mode) have
-  // only ever been observed with this sub_id. The main periodic
-  // broadcast frames (HEARTBEAT/STATUS/CONTROL/QUERY) use 0x08.
+  // The main periodic broadcast channel: HEARTBEAT/STATUS/CONTROL/QUERY,
+  // AND (despite being event-driven, not periodic) SETPOINT_EVENT too --
+  // see the corrected note at the top of this file. Named explicitly
+  // after send_short_setpoint_probe() was caught using SUB_ID_EVENT
+  // (wrong) instead of this for a SETPOINT_EVENT-shaped frame.
+  static constexpr uint8_t SUB_ID_MAIN = 0x08;
+
+  // POWER/FAN/MODE's separate channel -- confirmed distinct from
+  // SUB_ID_MAIN for those three specifically. Do NOT assume this also
+  // covers SETPOINT_EVENT; it doesn't (see above).
   static constexpr uint8_t SUB_ID_EVENT = 0x05;
 
   // ac_running_sensor_ goes false if no STATUS frame arrives for this
