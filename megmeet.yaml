@@ -5,6 +5,7 @@ external_components:
       ref: main
     components:
       - megmeet_uart
+    refresh: 0s
 
 logger:
   level: DEBUG
