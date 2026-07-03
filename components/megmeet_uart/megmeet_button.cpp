@@ -26,6 +26,12 @@ void MegmeetButton::press_action() {
     case MegmeetButtonAction::SETPOINT_EVENT_STEP_DOWN:
       this->hub_->adjust_setpoint_event(-1);
       break;
+    case MegmeetButtonAction::TUYA_POWER_OFF_PROBE:
+      this->hub_->send_tuya_power_probe(false);
+      break;
+    case MegmeetButtonAction::TUYA_POWER_ON_PROBE:
+      this->hub_->send_tuya_power_probe(true);
+      break;
   }
 }
 
