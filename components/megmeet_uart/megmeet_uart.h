@@ -198,6 +198,24 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // rules out that one convention, not "any possible Tuya framing."
   void send_tuya_power_probe(bool on);
 
+  // SEPARATE probe, different hypothesis: tests whether the mainboard's
+  // parser is length-driven (the `len` byte in every real frame we've
+  // captured exactly equals the byte count that follows it -- 0x07,
+  // matching sub_id+type+data1+data2+data3+tail1+tail2 -- suggesting
+  // it's a genuine length field, not a constant) and whether a SHORTER
+  // frame, dropping the padding bytes that are always 00 10 00 in every
+  // real SETPOINT_EVENT broadcast, might be what a genuine command
+  // looks like. Sends: 55 35 04 08 20 [current setpoint] [tail2], 7
+  // bytes total, len correctly set to 4. Null-hypothesis test like
+  // replay_last_setpoint_event() -- uses the AC's own current setpoint
+  // value, not a changed one, so a reaction can only mean "this shape
+  // got processed," not "and the value took." tail2 is a GUESS (copied
+  // from the last real captured frame) -- we have no checksum formula
+  // for this shortened shape, so a negative result here is ambiguous
+  // (wrong shape vs. rejected checksum), unlike the byte-for-byte replay
+  // above. This is intentionally more speculative than the probes above.
+  void send_short_setpoint_probe();
+
  protected:
   struct Frame {
     uint8_t header1;
