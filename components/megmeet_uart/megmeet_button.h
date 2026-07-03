@@ -10,6 +10,9 @@ enum class MegmeetButtonAction {
   REPLAY_LAST_CONTROL,
   SETPOINT_STEP_UP,
   SETPOINT_STEP_DOWN,
+  REPLAY_LAST_SETPOINT_EVENT,
+  SETPOINT_EVENT_STEP_UP,
+  SETPOINT_EVENT_STEP_DOWN,
 };
 
 // Each button is a thin wrapper that calls back into the hub -- the hub
