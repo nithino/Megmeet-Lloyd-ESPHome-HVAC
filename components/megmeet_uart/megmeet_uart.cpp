@@ -389,5 +389,31 @@ void MegmeetUART::send_tuya_power_probe(bool on) {
   this->write_array(buf, sizeof(buf));
 }
 
+void MegmeetUART::send_short_setpoint_probe() {
+  if (!setpoint_event_valid_) {
+    ESP_LOGW(TAG, "No SETPOINT_EVENT frame captured yet -- nothing to base this on.");
+    return;
+  }
+
+  // 55 35 04 08 20 [current setpoint] [tail2] -- len correctly set to 4
+  // for this shorter shape (sub_id+type+tail1+tail2, no data1/data2/data3
+  // padding). tail1/tail2 copied from the last real captured frame --
+  // null-hypothesis value, tail2 is a guess, see the caveat in the .h
+  // file declaration.
+  uint8_t buf[7] = {0x55,
+                     0x35,
+                     0x04,
+                     SUB_ID_EVENT,
+                     TYPE_SETPOINT_EVENT,
+                     last_setpoint_event_frame_.tail1,
+                     last_setpoint_event_frame_.tail2};
+
+  char hex[24];
+  snprintf(hex, sizeof(hex), "%02X %02X %02X %02X %02X %02X %02X", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5],
+           buf[6]);
+  ESP_LOGW(TAG, "TX (short-frame probe, speculative -- see .h file caveat): %s", hex);
+  this->write_array(buf, sizeof(buf));
+}
+
 }  // namespace megmeet_uart
 }  // namespace esphome
