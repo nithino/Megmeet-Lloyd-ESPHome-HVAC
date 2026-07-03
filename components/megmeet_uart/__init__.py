@@ -1,7 +1,13 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor, text_sensor, uart
-from esphome.const import CONF_ID, ENTITY_CATEGORY_DIAGNOSTIC
+from esphome.const import (
+    CONF_ID,
+    DEVICE_CLASS_TEMPERATURE,
+    ENTITY_CATEGORY_DIAGNOSTIC,
+    STATE_CLASS_MEASUREMENT,
+    UNIT_CELSIUS,
+)
 
 CODEOWNERS = ["@nithino"]
 
@@ -18,8 +24,7 @@ MegmeetUART = megmeet_uart_ns.class_(
 
 # All entities are optional -- omit any you don't want exposed to HA.
 CONF_STATUS_RAW = "status_raw"
-CONF_CONTROL_SETPOINT_RAW = "control_setpoint_raw"
-CONF_CONTROL_RAMP_RAW = "control_ramp_raw"
+CONF_SETPOINT_CELSIUS = "setpoint_celsius"
 CONF_HEARTBEAT_TICK = "heartbeat_tick"
 CONF_LAST_STATUS_FRAME = "last_status_frame"
 CONF_LAST_CONTROL_FRAME = "last_control_frame"
@@ -37,21 +42,15 @@ CONFIG_SCHEMA = (
                 accuracy_decimals=0,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            cv.Optional(CONF_CONTROL_SETPOINT_RAW): sensor.sensor_schema(
-                icon="mdi:thermometer-lines",
+            # Confirmed via a controlled button-press test: tail1 of the
+            # event-driven 0x20 frame is the user's setpoint in degrees C,
+            # direct, no scaling. Fires once per button press, not on a
+            # periodic cycle -- see megmeet_uart.h/.cpp for the full test.
+            cv.Optional(CONF_SETPOINT_CELSIUS): sensor.sensor_schema(
+                unit_of_measurement=UNIT_CELSIUS,
+                device_class=DEVICE_CLASS_TEMPERATURE,
+                state_class=STATE_CLASS_MEASUREMENT,
                 accuracy_decimals=0,
-                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-            ),
-            # Compressor ramp/step counter -- lives in the same CONTROL
-            # frame's tail1 byte as the setpoint but in a distinct,
-            # much lower numeric range. Rises while the compressor is
-            # ramping toward a new stage and levels off once it
-            # settles; a "is the compressor still changing speed"
-            # diagnostic, not a temperature.
-            cv.Optional(CONF_CONTROL_RAMP_RAW): sensor.sensor_schema(
-                icon="mdi:fan-clock",
-                accuracy_decimals=0,
-                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             cv.Optional(CONF_HEARTBEAT_TICK): sensor.sensor_schema(
                 icon="mdi:pulse",
@@ -90,13 +89,9 @@ async def to_code(config):
         sens = await sensor.new_sensor(config[CONF_STATUS_RAW])
         cg.add(var.set_status_raw_sensor(sens))
 
-    if CONF_CONTROL_SETPOINT_RAW in config:
-        sens = await sensor.new_sensor(config[CONF_CONTROL_SETPOINT_RAW])
-        cg.add(var.set_control_setpoint_raw_sensor(sens))
-
-    if CONF_CONTROL_RAMP_RAW in config:
-        sens = await sensor.new_sensor(config[CONF_CONTROL_RAMP_RAW])
-        cg.add(var.set_control_ramp_raw_sensor(sens))
+    if CONF_SETPOINT_CELSIUS in config:
+        sens = await sensor.new_sensor(config[CONF_SETPOINT_CELSIUS])
+        cg.add(var.set_setpoint_celsius_sensor(sens))
 
     if CONF_HEARTBEAT_TICK in config:
         sens = await sensor.new_sensor(config[CONF_HEARTBEAT_TICK])
