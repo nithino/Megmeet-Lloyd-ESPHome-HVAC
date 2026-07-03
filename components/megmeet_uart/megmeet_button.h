@@ -16,6 +16,7 @@ enum class MegmeetButtonAction {
   TUYA_POWER_OFF_PROBE,
   TUYA_POWER_ON_PROBE,
   SHORT_SETPOINT_PROBE,
+  TUYA_TEMP_PROBE,
 };
 
 // Each button is a thin wrapper that calls back into the hub -- the hub
