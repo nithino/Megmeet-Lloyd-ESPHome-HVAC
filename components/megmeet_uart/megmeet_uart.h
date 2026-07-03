@@ -165,6 +165,24 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // matching tail1, or ignores/recomputes it on its own.
   void adjust_control_setpoint(int delta_steps);
 
+  // The above two operate on CONTROL (0x2F), which is CONFIRMED NOT to
+  // be the real setpoint (see the block above) -- they were always
+  // testing the wrong frame. These operate on TYPE_SETPOINT_EVENT
+  // (0x20) instead, the frame we've actually confirmed carries the
+  // real setpoint. Same experimental status otherwise: nothing here is
+  // a confirmed write path, only a probe. Start with
+  // replay_last_setpoint_event() -- it's byte-for-byte identical to
+  // real traffic the mainboard already accepts as valid framing, so
+  // it's the lowest-risk way to test whether inbound frames get
+  // processed at all before trying one with a changed value.
+  void replay_last_setpoint_event();
+
+  // Re-send the most recently captured SETPOINT_EVENT frame with tail1
+  // shifted by delta_degrees directly (no doubling -- tail1 IS the
+  // degrees C value here, confirmed 1:1, unlike CONTROL's guessed *2
+  // step). tail2 is copied unchanged, same open question as above.
+  void adjust_setpoint_event(int delta_degrees);
+
  protected:
   struct Frame {
     uint8_t header1;
@@ -232,6 +250,12 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // found for the real setpoint mechanism (TYPE_SETPOINT_EVENT).
   Frame last_control_frame_{};
   bool control_frame_valid_{false};
+
+  // Last genuine SETPOINT_EVENT (0x20) frame seen -- basis for
+  // replay_last_setpoint_event()/adjust_setpoint_event(). Unlike
+  // last_control_frame_, this one IS the confirmed real setpoint field.
+  Frame last_setpoint_event_frame_{};
+  bool setpoint_event_valid_{false};
 
   // Timestamp (millis()) of the last STATUS frame received, used by the
   // loop()-driven staleness check that drives ac_running_sensor_. 0
