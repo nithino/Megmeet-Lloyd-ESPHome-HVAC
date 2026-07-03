@@ -17,6 +17,9 @@ ACTIONS = {
     "replay_last_control": MegmeetButtonAction.REPLAY_LAST_CONTROL,
     "setpoint_step_up": MegmeetButtonAction.SETPOINT_STEP_UP,
     "setpoint_step_down": MegmeetButtonAction.SETPOINT_STEP_DOWN,
+    "replay_last_setpoint_event": MegmeetButtonAction.REPLAY_LAST_SETPOINT_EVENT,
+    "setpoint_event_step_up": MegmeetButtonAction.SETPOINT_EVENT_STEP_UP,
+    "setpoint_event_step_down": MegmeetButtonAction.SETPOINT_EVENT_STEP_DOWN,
 }
 
 CONFIG_SCHEMA = button.button_schema(
