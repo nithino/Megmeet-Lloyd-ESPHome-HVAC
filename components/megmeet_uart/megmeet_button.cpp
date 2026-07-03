@@ -35,6 +35,9 @@ void MegmeetButton::press_action() {
     case MegmeetButtonAction::SHORT_SETPOINT_PROBE:
       this->hub_->send_short_setpoint_probe();
       break;
+    case MegmeetButtonAction::TUYA_TEMP_PROBE:
+      this->hub_->send_tuya_temp_probe();
+      break;
   }
 }
 
