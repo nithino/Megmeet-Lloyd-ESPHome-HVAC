@@ -12,8 +12,7 @@ void MegmeetUART::setup() { ESP_LOGCONFIG(TAG, "Setting up Megmeet UART..."); }
 void MegmeetUART::dump_config() {
   ESP_LOGCONFIG(TAG, "Megmeet UART:");
   LOG_SENSOR("  ", "Status Raw", this->status_raw_sensor_);
-  LOG_SENSOR("  ", "Control Setpoint Raw", this->control_setpoint_raw_sensor_);
-  LOG_SENSOR("  ", "Control Ramp Raw", this->control_ramp_raw_sensor_);
+  LOG_SENSOR("  ", "Setpoint Celsius", this->setpoint_celsius_sensor_);
   LOG_SENSOR("  ", "Heartbeat Tick", this->heartbeat_tick_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Status Frame", this->last_status_frame_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Control Frame", this->last_control_frame_sensor_);
@@ -79,6 +78,9 @@ void MegmeetUART::process_frame(const Frame &frame) {
     case TYPE_QUERY:
       handle_query_(frame);
       break;
+    case TYPE_SETPOINT_EVENT:
+      handle_setpoint_event_(frame);
+      break;
     default:
       unknown_count_++;
       handle_unknown_(frame);
@@ -121,8 +123,10 @@ void MegmeetUART::publish_val_(sensor::Sensor *sensor, float value) {
 // CAVEAT: tail1/tail2 do not behave like a checksum of the other 8
 // bytes -- identical 8-byte payloads have been observed with different
 // tail bytes, ruling out every common 8-bit sum/XOR/CRC-8 scheme. Until
-// that's nailed down, treat status_raw / control_setpoint_raw /
-// heartbeat_tick as RAW diagnostic values, not calibrated readings.
+// that's nailed down, treat status_raw / heartbeat_tick as RAW
+// diagnostic values, not calibrated readings. setpoint_celsius is the
+// one exception -- it's confirmed directly against a controlled button
+// test, see handle_setpoint_event_() below.
 // -----------------------------------------------------------------------
 
 void MegmeetUART::handle_heartbeat_(const Frame &frame) {
@@ -141,20 +145,18 @@ void MegmeetUART::handle_control_(const Frame &frame) {
   ESP_LOGD(TAG, "CONTROL    %s", frame_to_hex_(frame).c_str());
   publish_text_(last_control_frame_sensor_, frame_to_hex_(frame));
 
-  // tail1 carries two unrelated, interleaved values on this frame type
-  // -- see the classification note at the top of the .h file. Route
-  // each frame to the right sensor, and only ever remember genuine
-  // setpoint-cluster frames as the "last CONTROL frame" used for
-  // replay/adjust, so a ramp-counter value can never get sent back to
-  // the mainboard mislabeled as a setpoint.
-  if (frame.tail1 >= CONTROL_SETPOINT_CLUSTER_MIN) {
-    publish_val_(control_setpoint_raw_sensor_, frame.tail1);
+  // No numeric sensor is derived from tail1 here -- it's confirmed NOT
+  // to be the setpoint (see the block at the top of the .h file), and
+  // what it actually represents isn't nailed down yet. Kept around only
+  // as the (experimental, unconfirmed) basis for replay_last_control_frame()/
+  // adjust_control_setpoint() below.
+  last_control_frame_ = frame;
+  control_frame_valid_ = true;
+}
 
-    last_control_frame_ = frame;
-    control_frame_valid_ = true;
-  } else {
-    publish_val_(control_ramp_raw_sensor_, frame.tail1);
-  }
+void MegmeetUART::handle_setpoint_event_(const Frame &frame) {
+  ESP_LOGI(TAG, "SETPOINT   %s  (tail1 = %d C)", frame_to_hex_(frame).c_str(), frame.tail1);
+  publish_val_(setpoint_celsius_sensor_, frame.tail1);
 }
 
 void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
