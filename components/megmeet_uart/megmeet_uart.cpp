@@ -212,6 +212,9 @@ void MegmeetUART::handle_control_(const Frame &frame) {
 void MegmeetUART::handle_setpoint_event_(const Frame &frame) {
   ESP_LOGI(TAG, "SETPOINT   %s  (tail1 = %d C)", frame_to_hex_(frame).c_str(), frame.tail1);
   publish_val_(setpoint_celsius_sensor_, frame.tail1);
+
+  last_setpoint_event_frame_ = frame;
+  setpoint_event_valid_ = true;
 }
 
 void MegmeetUART::handle_power_event_(const Frame &frame) {
@@ -328,6 +331,34 @@ void MegmeetUART::adjust_control_setpoint(int delta_steps) {
   // This is the actual experiment: if the AC reacts anyway, tail2
   // either isn't checked, or isn't a function of tail1 the way we
   // assumed. If nothing happens, that's evidence tail2 does matter.
+  transmit_frame_(f);
+}
+
+void MegmeetUART::replay_last_setpoint_event() {
+  if (!setpoint_event_valid_) {
+    ESP_LOGW(TAG, "No SETPOINT_EVENT frame captured yet -- nothing to replay. Change the temperature "
+                  "once from the remote first so there's a real frame to copy.");
+    return;
+  }
+  transmit_frame_(last_setpoint_event_frame_);
+}
+
+void MegmeetUART::adjust_setpoint_event(int delta_degrees) {
+  if (!setpoint_event_valid_) {
+    ESP_LOGW(TAG, "No SETPOINT_EVENT frame captured yet -- nothing to base the change on.");
+    return;
+  }
+
+  Frame f = last_setpoint_event_frame_;
+  int new_tail1 = static_cast<int>(f.tail1) + delta_degrees;
+
+  if (new_tail1 < 0 || new_tail1 > 255) {
+    ESP_LOGW(TAG, "Setpoint step out of byte range (%d), ignoring", new_tail1);
+    return;
+  }
+
+  f.tail1 = static_cast<uint8_t>(new_tail1);
+  // Same open question on tail2 as adjust_control_setpoint() above.
   transmit_frame_(f);
 }
 
