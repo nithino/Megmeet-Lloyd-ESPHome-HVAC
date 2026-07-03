@@ -40,19 +40,24 @@ namespace megmeet_uart {
 // the AC directly after pressing, and don't be surprised if nothing
 // happens -- that's expected until proven otherwise, not a bug.
 //
-// CONTROL (type=0x2F) tail1 carries TWO unrelated values, interleaved:
-//   - Cluster A ("setpoint"): stays parked near the user's setpoint the
-//     whole session (observed 0xDC-0xE0 at a 26 C setpoint), only moves
-//     in +/-2 steps when the setpoint is actually changed.
-//   - Cluster B ("ramp"): a compressor ramp/step counter. Observed
-//     climbing 0x09 -> 0x25 over several minutes as the compressor
-//     spun up, then plateauing/reversing -- unrelated to the remote.
-//   These were confirmed by diffing every captured CONTROL frame:
-//   Cluster A samples never drop below ~0xC0, Cluster B samples never
-//   reach it, so a mid-range threshold (CONTROL_SETPOINT_CLUSTER_MIN)
-//   cleanly separates the two. Until real setpoint changes at the
-//   extremes of the AC's range are captured, treat that threshold as a
-//   working heuristic, not a proven boundary.
+// CONFIRMED via a controlled test (2 "temp down" + 3 "temp up" presses,
+// 30s apart, AC otherwise idle): the genuine user setpoint is NOT in
+// CONTROL (0x2F) at all. It's a previously-"UNKNOWN" frame type, 0x20,
+// which the mainboard sends once, 4-22ms after the IR receiver decodes
+// a temperature button -- not as part of the periodic broadcast cycle.
+// Its tail1 byte is the setpoint in degrees C directly: no scaling, no
+// offset. All 5 presses in the test matched exactly (24 -> 23 -> 22 ->
+// 23 -> 24 -> 25). See handle_setpoint_event_().
+//
+// CONTROL (0x2F) tail1 is NOT the setpoint -- that was an earlier,
+// wrong hypothesis based on a too-short capture window. Over a longer
+// (18 min) idle session it was shown to drift continuously in small
+// +/-2 steps with zero button presses, which a real setpoint can't do.
+// It's most likely a live feedback value (e.g. coil/regulation target)
+// unrelated to what the user dialed in. It's still logged via
+// last_control_frame_sensor_ (raw hex) for future analysis, but no
+// numeric sensor is derived from it anymore -- don't resurrect
+// control_setpoint_raw/control_ramp_raw without new evidence.
 // -----------------------------------------------------------------------
 
 class MegmeetUART : public Component, public uart::UARTDevice {
@@ -65,8 +70,7 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   float get_setup_priority() const override { return setup_priority::DATA; }
 
   void set_status_raw_sensor(sensor::Sensor *s) { status_raw_sensor_ = s; }
-  void set_control_setpoint_raw_sensor(sensor::Sensor *s) { control_setpoint_raw_sensor_ = s; }
-  void set_control_ramp_raw_sensor(sensor::Sensor *s) { control_ramp_raw_sensor_ = s; }
+  void set_setpoint_celsius_sensor(sensor::Sensor *s) { setpoint_celsius_sensor_ = s; }
   void set_heartbeat_tick_sensor(sensor::Sensor *s) { heartbeat_tick_sensor_ = s; }
 
   void set_last_status_frame_sensor(text_sensor::TextSensor *s) { last_status_frame_sensor_ = s; }
@@ -112,14 +116,10 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   static constexpr uint8_t TYPE_STATUS = 0x09;
   static constexpr uint8_t TYPE_CONTROL = 0x2F;
   static constexpr uint8_t TYPE_QUERY = 0x98;
-
-  // CONTROL tail1 classification threshold: Cluster A (genuine setpoint)
-  // has always been observed >= this value (0xDC-0xE0 at a 26 C
-  // setpoint); Cluster B (compressor ramp counter) has always been
-  // observed well below it (0x09-0x25). Picked mid-range for margin on
-  // both sides -- revisit if setpoint changes are ever captured near
-  // the AC's min/max temperature.
-  static constexpr uint8_t CONTROL_SETPOINT_CLUSTER_MIN = 0x80;
+  // Event-driven, not periodic: sent once by the mainboard 4-22ms after
+  // the IR receiver decodes a temperature button press. tail1 = setpoint
+  // in degrees C, direct (confirmed by controlled test, see block above).
+  static constexpr uint8_t TYPE_SETPOINT_EVENT = 0x20;
 
   std::vector<uint8_t> rx_buffer_;
   PacketState packet_db_[256];
@@ -127,11 +127,11 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   uint32_t frame_count_{0};
   uint32_t unknown_count_{0};
 
-  // Last CONTROL frame confirmed to belong to the setpoint cluster.
-  // This -- not just "the last CONTROL frame seen" -- is what
-  // replay_last_control_frame()/adjust_control_setpoint() operate on,
-  // so a ramp-counter frame can never get mistaken for a setpoint and
-  // replayed/incremented as one.
+  // Last CONTROL frame seen, used as the (unconfirmed/experimental)
+  // basis for replay_last_control_frame()/adjust_control_setpoint().
+  // CONTROL is known NOT to carry the real setpoint (see block above),
+  // so these TX experiments are testing blind until a write path is
+  // found for the real setpoint mechanism (TYPE_SETPOINT_EVENT).
   Frame last_control_frame_{};
   bool control_frame_valid_{false};
 
@@ -141,6 +141,7 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   void handle_status_(const Frame &frame);
   void handle_control_(const Frame &frame);
   void handle_query_(const Frame &frame);
+  void handle_setpoint_event_(const Frame &frame);
   void handle_unknown_(const Frame &frame);
 
   void compare_frame_(const Frame &frame);
@@ -151,8 +152,7 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   void transmit_frame_(const Frame &frame);
 
   sensor::Sensor *status_raw_sensor_{nullptr};
-  sensor::Sensor *control_setpoint_raw_sensor_{nullptr};
-  sensor::Sensor *control_ramp_raw_sensor_{nullptr};
+  sensor::Sensor *setpoint_celsius_sensor_{nullptr};
   sensor::Sensor *heartbeat_tick_sensor_{nullptr};
 
   text_sensor::TextSensor *last_status_frame_sensor_{nullptr};
