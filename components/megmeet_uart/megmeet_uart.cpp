@@ -7,7 +7,10 @@ namespace megmeet_uart {
 
 static const char *const TAG = "megmeet_uart";
 
-void MegmeetUART::setup() { ESP_LOGCONFIG(TAG, "Setting up Megmeet UART..."); }
+void MegmeetUART::setup() {
+  ESP_LOGCONFIG(TAG, "Setting up Megmeet UART...");
+  boot_millis_ = millis();
+}
 
 void MegmeetUART::dump_config() {
   ESP_LOGCONFIG(TAG, "Megmeet UART:");
@@ -29,6 +32,11 @@ void MegmeetUART::dump_config() {
 // -----------------------------------------------------------------------
 
 void MegmeetUART::loop() {
+  // Runs every call regardless of what's on the wire right now -- this
+  // is what lets ac_running_sensor_ notice STATUS has gone quiet even
+  // when no new bytes ever arrive to trigger the parsing below.
+  check_ac_running_();
+
   while (this->available()) {
     uint8_t b;
     if (!this->read_byte(&b))
@@ -108,6 +116,23 @@ void MegmeetUART::process_frame(const Frame &frame) {
   compare_frame_(frame);
 }
 
+void MegmeetUART::check_ac_running_() {
+  if (!status_ever_seen_) {
+    // AC may already have been off when we booted -- STATUS won't ever
+    // arrive to seed last_status_millis_ in that case. Fall back to
+    // timing out against boot instead, so this still converges to
+    // "false" within AC_RUNNING_TIMEOUT_MS rather than sitting at
+    // unknown indefinitely.
+    if (millis() - boot_millis_ > AC_RUNNING_TIMEOUT_MS) {
+      publish_bin_(ac_running_sensor_, false);
+    }
+    return;
+  }
+  if (millis() - last_status_millis_ > AC_RUNNING_TIMEOUT_MS) {
+    publish_bin_(ac_running_sensor_, false);
+  }
+}
+
 std::string MegmeetUART::frame_to_hex_(const Frame &f) {
   char buf[32];
   snprintf(buf, sizeof(buf), "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X", f.header1, f.header2, f.len,
@@ -162,14 +187,13 @@ void MegmeetUART::handle_status_(const Frame &frame) {
   publish_text_(last_status_frame_sensor_, frame_to_hex_(frame));
   publish_val_(status_raw_sensor_, frame.tail1);
 
-  // Confirmed by a controlled power-off test (see the block at the top
-  // of the .h file): tail1 sitting at STATUS_STOPPED_VALUE means the AC
-  // has actually finished its shutdown countdown, not just received the
-  // off command. In that test STATUS frames stopped arriving entirely
-  // once tail1 hit this value -- that's fine here, since publish_bin_
-  // only republishes on change and the sensor holds its last state
-  // (false) until STATUS resumes on the next power-on.
-  publish_bin_(ac_running_sensor_, frame.tail1 != STATUS_STOPPED_VALUE);
+  // Presence of STATUS traffic at all -- not any particular value -- is
+  // the confirmed running signal (see the block at the top of the .h
+  // file; a value-based version of this was tried and disproven). Any
+  // STATUS frame arriving means the AC is running, immediately.
+  status_ever_seen_ = true;
+  last_status_millis_ = millis();
+  publish_bin_(ac_running_sensor_, true);
 }
 
 void MegmeetUART::handle_control_(const Frame &frame) {
