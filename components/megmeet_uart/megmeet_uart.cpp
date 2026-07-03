@@ -423,5 +423,47 @@ void MegmeetUART::send_short_setpoint_probe() {
   this->write_array(buf, sizeof(buf));
 }
 
+void MegmeetUART::send_tuya_temp_probe() {
+  if (!setpoint_event_valid_) {
+    ESP_LOGW(TAG, "No SETPOINT_EVENT frame captured yet -- nothing to base this on.");
+    return;
+  }
+
+  // Tuya "kt" category schema, confirmed live from Tuya's own dev docs:
+  //   DP2 = temp_set, type Integer, scale=10 -> wire value = degrees C * 10,
+  //   4 bytes big-endian.
+  //   55 AA | VER=00 | CMD=0x06 | LEN(2) |
+  //   [DPID=02 | TYPE=0x02 (integer) | LEN=0004 | VALUE(4, big-endian)] |
+  //   CHECKSUM
+  uint32_t value = static_cast<uint32_t>(last_setpoint_event_frame_.tail1) * 10;
+  uint8_t buf[15] = {0x55,
+                      0xAA,
+                      0x00,
+                      0x06,
+                      0x00,
+                      0x08,
+                      0x02,
+                      0x02,
+                      0x00,
+                      0x04,
+                      static_cast<uint8_t>((value >> 24) & 0xFF),
+                      static_cast<uint8_t>((value >> 16) & 0xFF),
+                      static_cast<uint8_t>((value >> 8) & 0xFF),
+                      static_cast<uint8_t>(value & 0xFF),
+                      0x00};
+
+  uint16_t sum = 0;
+  for (int i = 0; i < 14; i++)
+    sum += buf[i];
+  buf[14] = static_cast<uint8_t>(sum & 0xFF);
+
+  char hex[52];
+  snprintf(hex, sizeof(hex), "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X", buf[0],
+           buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12],
+           buf[13], buf[14]);
+  ESP_LOGW(TAG, "TX (Tuya DP2 temp_set probe, speculative -- see .h file caveat): %s", hex);
+  this->write_array(buf, sizeof(buf));
+}
+
 }  // namespace megmeet_uart
 }  // namespace esphome
