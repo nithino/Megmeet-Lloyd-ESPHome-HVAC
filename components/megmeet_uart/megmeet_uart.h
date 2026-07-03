@@ -183,6 +183,21 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // step). tail2 is copied unchanged, same open question as above.
   void adjust_setpoint_event(int delta_degrees);
 
+  // SEPARATE, more speculative probe: tests whether the mainboard's
+  // UART parser secretly understands Tuya's PUBLIC standard MCU serial
+  // protocol (55 AA framing, DP-based commands) for inbound commands,
+  // even though everything it broadcasts uses 55 35 framing. This is a
+  // real product built on Tuya's platform (confirmed), but the specific
+  // protocol we've reverse-engineered is confirmed NOT to be Tuya's
+  // published spec (different header, different checksum algorithm) --
+  // so this is a low-probability, low-cost longshot, not a confirmed
+  // lead. Sends a standard Tuya "set DP1 (power) to off/on" command
+  // frame, built and checksummed per Tuya's public spec. DP1-for-power
+  // is a common convention for their AC product category, NOT
+  // confirmed for this specific product -- a negative result here
+  // rules out that one convention, not "any possible Tuya framing."
+  void send_tuya_power_probe(bool on);
+
  protected:
   struct Frame {
     uint8_t header1;
