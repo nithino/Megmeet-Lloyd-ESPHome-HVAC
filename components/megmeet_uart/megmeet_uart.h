@@ -230,6 +230,21 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // above. This is intentionally more speculative than the probes above.
   void send_short_setpoint_probe();
 
+  // Corrected follow-up to send_tuya_power_probe(): uses DP2
+  // ("temp_set"), confirmed via Tuya's official "kt" (air conditioner)
+  // category schema fetched live from Tuya's own developer docs and
+  // cross-checked against a second real captured Tuya AC signature --
+  // not a guess this time. Per that schema temp_set is an Integer DP
+  // with scale=10, so the wire value is degrees C * 10, 4 bytes
+  // big-endian. Null-hypothesis test like the probes above: sends the
+  // AC's own current setpoint (from the last real SETPOINT_EVENT), not
+  // an invented value. Same fundamental caveat as send_tuya_power_probe()
+  // though -- this is still 55 AA framing, which is confirmed NOT to be
+  // what this mainboard's own broadcasts use, so this is testing
+  // "right DP schema, still-unconfirmed transport," not a fresh guess
+  // on the DP itself.
+  void send_tuya_temp_probe();
+
  protected:
   struct Frame {
     uint8_t header1;
