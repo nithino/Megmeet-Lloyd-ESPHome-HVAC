@@ -210,6 +210,14 @@ void MegmeetUART::handle_control_(const Frame &frame) {
 }
 
 void MegmeetUART::handle_setpoint_event_(const Frame &frame) {
+  if (frame.sub_id != SUB_ID_MAIN) {
+    ESP_LOGW(TAG, "type 0x%02X seen with unexpected sub_id 0x%02X (expected 0x%02X) -- treating as unknown: %s",
+             frame.type, frame.sub_id, SUB_ID_MAIN, frame_to_hex_(frame).c_str());
+    unknown_count_++;
+    handle_unknown_(frame);
+    return;
+  }
+
   ESP_LOGI(TAG, "SETPOINT   %s  (tail1 = %d C)", frame_to_hex_(frame).c_str(), frame.tail1);
   publish_val_(setpoint_celsius_sensor_, frame.tail1);
 
@@ -403,7 +411,7 @@ void MegmeetUART::send_short_setpoint_probe() {
   uint8_t buf[7] = {0x55,
                      0x35,
                      0x04,
-                     SUB_ID_EVENT,
+                     SUB_ID_MAIN,
                      TYPE_SETPOINT_EVENT,
                      last_setpoint_event_frame_.tail1,
                      last_setpoint_event_frame_.tail2};
