@@ -362,5 +362,32 @@ void MegmeetUART::adjust_setpoint_event(int delta_degrees) {
   transmit_frame_(f);
 }
 
+void MegmeetUART::send_tuya_power_probe(bool on) {
+  // Built directly from Tuya's public MCU serial protocol spec:
+  //   55 AA | VER | CMD=0x06 (send command) | LEN(2, big-endian) |
+  //   [DPID | TYPE=0x01 (bool) | LEN=0x0001 | VALUE] | CHECKSUM
+  // Checksum = sum of every preceding byte, mod 256 (Tuya's algorithm,
+  // NOT the same as anything used elsewhere in this component -- our
+  // real frames were already confirmed not to use simple additive
+  // checksums, so this is deliberately a different, Tuya-native calc).
+  // DP1 = power switch is the conventional assignment for Tuya's AC
+  // product category, NOT confirmed for this specific unit. See the
+  // caveat block at the top of the .h file before drawing conclusions
+  // from the result either way.
+  uint8_t value = on ? 0x01 : 0x00;
+  uint8_t buf[12] = {0x55, 0xAA, 0x00, 0x06, 0x00, 0x05, 0x01, 0x01, 0x00, 0x01, value, 0x00};
+
+  uint16_t sum = 0;
+  for (int i = 0; i < 11; i++)
+    sum += buf[i];
+  buf[11] = static_cast<uint8_t>(sum & 0xFF);
+
+  char hex[40];
+  snprintf(hex, sizeof(hex), "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X", buf[0], buf[1], buf[2],
+           buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9], buf[10], buf[11]);
+  ESP_LOGW(TAG, "TX (Tuya protocol probe, speculative -- see .h file caveat): %s", hex);
+  this->write_array(buf, sizeof(buf));
+}
+
 }  // namespace megmeet_uart
 }  // namespace esphome
