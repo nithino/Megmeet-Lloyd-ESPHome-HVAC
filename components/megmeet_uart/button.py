@@ -20,6 +20,8 @@ ACTIONS = {
     "replay_last_setpoint_event": MegmeetButtonAction.REPLAY_LAST_SETPOINT_EVENT,
     "setpoint_event_step_up": MegmeetButtonAction.SETPOINT_EVENT_STEP_UP,
     "setpoint_event_step_down": MegmeetButtonAction.SETPOINT_EVENT_STEP_DOWN,
+    "tuya_power_off_probe": MegmeetButtonAction.TUYA_POWER_OFF_PROBE,
+    "tuya_power_on_probe": MegmeetButtonAction.TUYA_POWER_ON_PROBE,
 }
 
 CONFIG_SCHEMA = button.button_schema(
