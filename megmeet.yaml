@@ -5,8 +5,8 @@ external_components:
       ref: main
     components:
       - megmeet_uart
-    refresh: 0s
-
+  refresh: 0s
+  
 logger:
   level: DEBUG
 
@@ -25,3 +25,11 @@ megmeet_uart:
     name: "AC Setpoint"
   heartbeat_tick:
     name: "AC Heartbeat Tick"
+  power_requested:
+    name: "AC Power Requested"
+  ac_running:
+    name: "AC Running"
+  last_fan_event_frame:
+    name: "AC Last Fan Event Frame"
+  last_mode_event_frame:
+    name: "AC Last Mode Event Frame"
