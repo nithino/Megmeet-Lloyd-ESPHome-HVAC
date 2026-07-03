@@ -14,10 +14,14 @@ void MegmeetUART::dump_config() {
   LOG_SENSOR("  ", "Status Raw", this->status_raw_sensor_);
   LOG_SENSOR("  ", "Setpoint Celsius", this->setpoint_celsius_sensor_);
   LOG_SENSOR("  ", "Heartbeat Tick", this->heartbeat_tick_sensor_);
+  LOG_BINARY_SENSOR("  ", "Power Requested", this->power_requested_sensor_);
+  LOG_BINARY_SENSOR("  ", "AC Running", this->ac_running_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Status Frame", this->last_status_frame_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Control Frame", this->last_control_frame_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Heartbeat Frame", this->last_heartbeat_frame_sensor_);
   LOG_TEXT_SENSOR("  ", "Last Unknown Frame", this->last_unknown_frame_sensor_);
+  LOG_TEXT_SENSOR("  ", "Last Fan Event Frame", this->last_fan_event_frame_sensor_);
+  LOG_TEXT_SENSOR("  ", "Last Mode Event Frame", this->last_mode_event_frame_sensor_);
 }
 
 // -----------------------------------------------------------------------
@@ -81,6 +85,16 @@ void MegmeetUART::process_frame(const Frame &frame) {
     case TYPE_SETPOINT_EVENT:
       handle_setpoint_event_(frame);
       break;
+    case TYPE_POWER_EVENT:
+      handle_power_event_(frame);
+      break;
+    case TYPE_FAN_EVENT_LOW:
+    case TYPE_FAN_EVENT_OTHER:
+      handle_fan_event_(frame);
+      break;
+    case TYPE_MODE_EVENT:
+      handle_mode_event_(frame);
+      break;
     default:
       unknown_count_++;
       handle_unknown_(frame);
@@ -117,6 +131,14 @@ void MegmeetUART::publish_val_(sensor::Sensor *sensor, float value) {
   sensor->publish_state(value);
 }
 
+void MegmeetUART::publish_bin_(binary_sensor::BinarySensor *sensor, bool value) {
+  if (sensor == nullptr)
+    return;
+  if (sensor->has_state() && sensor->state == value)
+    return;
+  sensor->publish_state(value);
+}
+
 // -----------------------------------------------------------------------
 // Frame type handlers
 //
@@ -139,6 +161,15 @@ void MegmeetUART::handle_status_(const Frame &frame) {
   ESP_LOGD(TAG, "STATUS     %s", frame_to_hex_(frame).c_str());
   publish_text_(last_status_frame_sensor_, frame_to_hex_(frame));
   publish_val_(status_raw_sensor_, frame.tail1);
+
+  // Confirmed by a controlled power-off test (see the block at the top
+  // of the .h file): tail1 sitting at STATUS_STOPPED_VALUE means the AC
+  // has actually finished its shutdown countdown, not just received the
+  // off command. In that test STATUS frames stopped arriving entirely
+  // once tail1 hit this value -- that's fine here, since publish_bin_
+  // only republishes on change and the sensor holds its last state
+  // (false) until STATUS resumes on the next power-on.
+  publish_bin_(ac_running_sensor_, frame.tail1 != STATUS_STOPPED_VALUE);
 }
 
 void MegmeetUART::handle_control_(const Frame &frame) {
@@ -157,6 +188,49 @@ void MegmeetUART::handle_control_(const Frame &frame) {
 void MegmeetUART::handle_setpoint_event_(const Frame &frame) {
   ESP_LOGI(TAG, "SETPOINT   %s  (tail1 = %d C)", frame_to_hex_(frame).c_str(), frame.tail1);
   publish_val_(setpoint_celsius_sensor_, frame.tail1);
+}
+
+void MegmeetUART::handle_power_event_(const Frame &frame) {
+  if (frame.sub_id != SUB_ID_EVENT) {
+    ESP_LOGW(TAG, "type 0x%02X seen with unexpected sub_id 0x%02X (expected 0x%02X) -- treating as unknown: %s",
+             frame.type, frame.sub_id, SUB_ID_EVENT, frame_to_hex_(frame).c_str());
+    unknown_count_++;
+    handle_unknown_(frame);
+    return;
+  }
+  bool on_requested = frame.data3 == 0x0F;
+  ESP_LOGI(TAG, "POWER      %s  (%s requested)", frame_to_hex_(frame).c_str(), on_requested ? "ON" : "OFF");
+  publish_bin_(power_requested_sensor_, on_requested);
+}
+
+void MegmeetUART::handle_fan_event_(const Frame &frame) {
+  if (frame.sub_id != SUB_ID_EVENT) {
+    ESP_LOGW(TAG, "type 0x%02X seen with unexpected sub_id 0x%02X (expected 0x%02X) -- treating as unknown: %s",
+             frame.type, frame.sub_id, SUB_ID_EVENT, frame_to_hex_(frame).c_str());
+    unknown_count_++;
+    handle_unknown_(frame);
+    return;
+  }
+  // Raw hex only -- the speed-name mapping isn't confirmed yet, see the
+  // block at the top of the .h file. Don't infer a speed here.
+  ESP_LOGI(TAG, "FAN EVENT  %s", frame_to_hex_(frame).c_str());
+  publish_text_(last_fan_event_frame_sensor_, frame_to_hex_(frame));
+}
+
+void MegmeetUART::handle_mode_event_(const Frame &frame) {
+  if (frame.sub_id != SUB_ID_EVENT) {
+    ESP_LOGW(TAG, "type 0x%02X seen with unexpected sub_id 0x%02X (expected 0x%02X) -- treating as unknown: %s",
+             frame.type, frame.sub_id, SUB_ID_EVENT, frame_to_hex_(frame).c_str());
+    unknown_count_++;
+    handle_unknown_(frame);
+    return;
+  }
+  // Raw hex only -- the mode-name mapping isn't confirmed yet, see the
+  // block at the top of the .h file. Presence of this frame at all is
+  // the reliable part (mode change accepted); absence after a mode
+  // button press means the mainboard rejected it.
+  ESP_LOGI(TAG, "MODE EVENT %s", frame_to_hex_(frame).c_str());
+  publish_text_(last_mode_event_frame_sensor_, frame_to_hex_(frame));
 }
 
 void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
