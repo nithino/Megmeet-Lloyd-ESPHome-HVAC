@@ -18,6 +18,9 @@ enum class MegmeetButtonAction {
   SHORT_SETPOINT_PROBE,
   TUYA_TEMP_PROBE,
   DIRECTION_FLAG_PROBE,
+  REPLAY_LAST_STATUS,
+  REPLAY_LAST_HEARTBEAT,
+  REPLAY_LAST_QUERY,
 };
 
 // Each button is a thin wrapper that calls back into the hub -- the hub
