@@ -125,11 +125,15 @@ void MegmeetUART::check_ac_running_() {
     // unknown indefinitely.
     if (millis() - boot_millis_ > AC_RUNNING_TIMEOUT_MS) {
       publish_bin_(ac_running_sensor_, false);
+      if (climate_ != nullptr)
+        climate_->update_power_state(false);
     }
     return;
   }
   if (millis() - last_status_millis_ > AC_RUNNING_TIMEOUT_MS) {
     publish_bin_(ac_running_sensor_, false);
+    if (climate_ != nullptr)
+      climate_->update_power_state(false);
   }
 }
 
@@ -194,6 +198,8 @@ void MegmeetUART::handle_status_(const Frame &frame) {
   status_ever_seen_ = true;
   last_status_millis_ = millis();
   publish_bin_(ac_running_sensor_, true);
+  if (climate_ != nullptr)
+    climate_->update_power_state(true);
 }
 
 void MegmeetUART::handle_control_(const Frame &frame) {
@@ -220,6 +226,8 @@ void MegmeetUART::handle_setpoint_event_(const Frame &frame) {
 
   ESP_LOGI(TAG, "SETPOINT   %s  (tail1 = %d C)", frame_to_hex_(frame).c_str(), frame.tail1);
   publish_val_(setpoint_celsius_sensor_, frame.tail1);
+  if (climate_ != nullptr)
+    climate_->update_setpoint(frame.tail1);
 
   last_setpoint_event_frame_ = frame;
   setpoint_event_valid_ = true;
@@ -250,6 +258,14 @@ void MegmeetUART::handle_fan_event_(const Frame &frame) {
   // block at the top of the .h file. Don't infer a speed here.
   ESP_LOGI(TAG, "FAN EVENT  %s", frame_to_hex_(frame).c_str());
   publish_text_(last_fan_event_frame_sensor_, frame_to_hex_(frame));
+
+  if (climate_ != nullptr) {
+    if (frame.type == TYPE_FAN_EVENT_LOW) {
+      climate_->update_fan_toggle();
+    } else {
+      climate_->update_fan_raw(frame.data3);
+    }
+  }
 }
 
 void MegmeetUART::handle_mode_event_(const Frame &frame) {
@@ -266,6 +282,8 @@ void MegmeetUART::handle_mode_event_(const Frame &frame) {
   // button press means the mainboard rejected it.
   ESP_LOGI(TAG, "MODE EVENT %s", frame_to_hex_(frame).c_str());
   publish_text_(last_mode_event_frame_sensor_, frame_to_hex_(frame));
+  if (climate_ != nullptr)
+    climate_->update_mode_raw(frame.data3);
 }
 
 void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
