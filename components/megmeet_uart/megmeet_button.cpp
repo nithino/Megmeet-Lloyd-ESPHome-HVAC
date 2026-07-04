@@ -38,6 +38,9 @@ void MegmeetButton::press_action() {
     case MegmeetButtonAction::TUYA_TEMP_PROBE:
       this->hub_->send_tuya_temp_probe();
       break;
+    case MegmeetButtonAction::DIRECTION_FLAG_PROBE:
+      this->hub_->send_direction_flag_probe();
+      break;
   }
 }
 
