@@ -37,3 +37,15 @@ megmeet_uart:
     name: "AC Last Fan Event Frame"
   last_mode_event_frame:
     name: "AC Last Mode Event Frame"
+
+button:
+  # ...your existing buttons...
+  - platform: megmeet_uart
+    action: replay_last_status
+    name: "AC Replay Last Status"
+  - platform: megmeet_uart
+    action: replay_last_heartbeat
+    name: "AC Replay Last Heartbeat"
+  - platform: megmeet_uart
+    action: replay_last_query
+    name: "AC Replay Last Query"
