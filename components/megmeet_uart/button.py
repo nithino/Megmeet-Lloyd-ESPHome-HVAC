@@ -24,6 +24,7 @@ ACTIONS = {
     "tuya_power_on_probe": MegmeetButtonAction.TUYA_POWER_ON_PROBE,
     "short_setpoint_probe": MegmeetButtonAction.SHORT_SETPOINT_PROBE,
     "tuya_temp_probe": MegmeetButtonAction.TUYA_TEMP_PROBE,
+    "direction_flag_probe": MegmeetButtonAction.DIRECTION_FLAG_PROBE,
 }
 
 CONFIG_SCHEMA = button.button_schema(
