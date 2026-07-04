@@ -4,8 +4,6 @@ from esphome.components import climate
 
 from . import MegmeetUART, megmeet_uart_ns
 
-DEPENDENCIES = ["megmeet_uart"]
-
 CONF_MEGMEET_UART_ID = "megmeet_uart_id"
 
 MegmeetClimate = megmeet_uart_ns.class_("MegmeetClimate", climate.Climate, cg.Component)
