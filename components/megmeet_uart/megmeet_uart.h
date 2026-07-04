@@ -268,6 +268,19 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // replay_last_setpoint_event()).
   void send_direction_flag_probe();
 
+  // Replay-sweep probes: byte-for-byte copies of the most recently
+  // captured STATUS/HEARTBEAT/QUERY frames, sent back unmodified. Same
+  // null-hypothesis safety property as replay_last_control_frame()/
+  // replay_last_setpoint_event() -- these are exact copies of real
+  // traffic the mainboard already sends, not invented bytes. Never
+  // tried before: every prior TX experiment only ever targeted CONTROL
+  // or SETPOINT_EVENT shaped frames. Test one at a time, observe fully
+  // between each -- see conversation history for the reasoning behind
+  // treating this as safer than broader fuzzing of this bus.
+  void replay_last_status_frame();
+  void replay_last_heartbeat_frame();
+  void replay_last_query_frame();
+
  protected:
   struct Frame {
     uint8_t header1;
@@ -348,6 +361,20 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // last_control_frame_, this one IS the confirmed real setpoint field.
   Frame last_setpoint_event_frame_{};
   bool setpoint_event_valid_{false};
+
+  // Last captured STATUS/HEARTBEAT/QUERY frames -- basis for the
+  // replay-sweep probes (replay_last_status_frame() etc). Same
+  // null-hypothesis safety property as replay_last_control_frame()/
+  // replay_last_setpoint_event(): byte-for-byte copies of real traffic,
+  // not invented bytes. Never tried before adding these -- every prior
+  // TX experiment only ever replayed/modified CONTROL or SETPOINT_EVENT
+  // shaped frames.
+  Frame last_status_frame_{};
+  bool status_frame_valid_{false};
+  Frame last_heartbeat_frame_{};
+  bool heartbeat_frame_valid_{false};
+  Frame last_query_frame_{};
+  bool query_frame_valid_{false};
 
   // Timestamp (millis()) of the last STATUS frame received, used by the
   // loop()-driven staleness check that drives ac_running_sensor_. 0
