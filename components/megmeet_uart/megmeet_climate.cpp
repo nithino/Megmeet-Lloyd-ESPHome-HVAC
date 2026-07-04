@@ -77,6 +77,9 @@ void MegmeetClimate::update_setpoint(uint8_t celsius) {
 void MegmeetClimate::update_mode_raw(uint8_t raw_byte) {
   climate::ClimateMode mapped;
   switch (raw_byte) {
+    case 0x15:
+      mapped = climate::CLIMATE_MODE_COOL;
+      break;
     case 0xA0:
       mapped = climate::CLIMATE_MODE_DRY;
       break;
