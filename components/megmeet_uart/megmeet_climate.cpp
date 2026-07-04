@@ -10,10 +10,26 @@ static const char *const TAG = "megmeet_uart.climate";
 // file -- if you add a real sample for Cool or Heat, update both.
 static const char *const CUSTOM_FAN_MODE_LOW_AMBIGUOUS = "Low/Low-Medium (ambiguous)";
 
+void MegmeetClimate::setup() {
+  if (this->current_temperature_sensor_ != nullptr) {
+    // Same pattern as ESPHome's own pid/thermostat climate components:
+    // grab an initial reading immediately (don't wait for the next
+    // change), then subscribe for updates.
+    if (this->current_temperature_sensor_->has_state())
+      this->current_temperature = this->current_temperature_sensor_->state;
+
+    this->current_temperature_sensor_->add_on_state_callback([this](float state) {
+      this->current_temperature = state;
+      this->publish_state();
+    });
+  }
+}
+
 void MegmeetClimate::dump_config() {
   ESP_LOGCONFIG(TAG, "Megmeet Climate:");
   ESP_LOGCONFIG(TAG, "  Write/control path: NOT IMPLEMENTED YET (read-only interpretation for now, IR planned)");
   ESP_LOGCONFIG(TAG, "  Mode/fan mapping confidence: LOW-MEDIUM, one sample per value -- see megmeet_climate.h");
+  LOG_SENSOR("  ", "Current Temperature Sensor (external)", this->current_temperature_sensor_);
 }
 
 climate::ClimateTraits MegmeetClimate::traits() {
