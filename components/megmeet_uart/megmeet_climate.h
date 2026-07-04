@@ -2,6 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/climate/climate.h"
+#include "esphome/components/sensor/sensor.h"
 
 namespace esphome {
 namespace megmeet_uart {
@@ -43,7 +44,17 @@ namespace megmeet_uart {
 // MODE_EVENT (or a power-on restoring a previously seen one) arrives.
 class MegmeetClimate : public climate::Climate, public Component {
  public:
+  void setup() override;
   void dump_config() override;
+
+  // Optional -- this AC's own protocol has no confirmed current-room-
+  // temperature field (only target/setpoint, see megmeet_uart.h). If
+  // set, current_temperature is mirrored from an external sensor (e.g.
+  // a `homeassistant:` platform sensor pulling in a separate thermostat/
+  // smart-plug-adjacent temperature reading) instead of coming from the
+  // AC's own traffic. Same wiring pattern as ESPHome's own pid/thermostat
+  // climate components (add_on_state_callback + immediate initial read).
+  void set_current_temperature_sensor(sensor::Sensor *sensor) { current_temperature_sensor_ = sensor; }
 
   // Called by MegmeetUART's frame handlers as real data arrives on the
   // wire -- not meant to be called from anywhere else.
@@ -59,6 +70,8 @@ class MegmeetClimate : public climate::Climate, public Component {
 
   climate::ClimateMode last_known_mode_{climate::CLIMATE_MODE_COOL};
   bool have_mode_{false};
+
+  sensor::Sensor *current_temperature_sensor_{nullptr};
 };
 
 }  // namespace megmeet_uart
