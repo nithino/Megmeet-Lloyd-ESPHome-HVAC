@@ -465,5 +465,20 @@ void MegmeetUART::send_tuya_temp_probe() {
   this->write_array(buf, sizeof(buf));
 }
 
+void MegmeetUART::send_direction_flag_probe() {
+  if (!setpoint_event_valid_) {
+    ESP_LOGW(TAG, "No SETPOINT_EVENT frame captured yet -- nothing to base this on.");
+    return;
+  }
+
+  // Byte-for-byte copy of the real captured frame, EXCEPT sub_id has its
+  // high bit set (0x08 -> 0x88). Single-variable test of the "high bit =
+  // module origin" hypothesis borrowed from AUX_HVAC_Protocol -- see the
+  // caveat in the .h file declaration.
+  Frame f = last_setpoint_event_frame_;
+  f.sub_id |= 0x80;
+  transmit_frame_(f);
+}
+
 }  // namespace megmeet_uart
 }  // namespace esphome
