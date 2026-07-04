@@ -17,6 +17,10 @@ uart:
   baud_rate: 9600
   parity: EVEN
 
+climate:
+  - platform: megmeet_uart
+    name: "Master AC"
+
 megmeet_uart:
   id: megmeet
   status_raw:
