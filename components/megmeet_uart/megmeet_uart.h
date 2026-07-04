@@ -8,6 +8,7 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "megmeet_climate.h"
 
 namespace esphome {
 namespace megmeet_uart {
@@ -163,6 +164,12 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   void set_last_unknown_frame_sensor(text_sensor::TextSensor *s) { last_unknown_frame_sensor_ = s; }
   void set_last_fan_event_frame_sensor(text_sensor::TextSensor *s) { last_fan_event_frame_sensor_ = s; }
   void set_last_mode_event_frame_sensor(text_sensor::TextSensor *s) { last_mode_event_frame_sensor_ = s; }
+
+  // Optional -- if set, the hub pushes interpreted state to this climate
+  // entity as real frames arrive. See megmeet_climate.h for what's
+  // confirmed vs. best-effort in that interpretation, and note it's
+  // read-only for now (no write path exists yet).
+  void set_climate(MegmeetClimate *c) { climate_ = c; }
 
   // --- Experimental TX, called from the button platform ---
 
@@ -388,6 +395,8 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   text_sensor::TextSensor *last_unknown_frame_sensor_{nullptr};
   text_sensor::TextSensor *last_fan_event_frame_sensor_{nullptr};
   text_sensor::TextSensor *last_mode_event_frame_sensor_{nullptr};
+
+  MegmeetClimate *climate_{nullptr};
 };
 
 }  // namespace megmeet_uart
