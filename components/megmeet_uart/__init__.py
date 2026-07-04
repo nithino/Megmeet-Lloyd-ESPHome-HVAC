@@ -13,7 +13,7 @@ from esphome.const import (
 
 CODEOWNERS = ["@nithino"]
 
-AUTO_LOAD = ["uart", "sensor", "text_sensor", "button", "binary_sensor"]
+AUTO_LOAD = ["uart", "sensor", "text_sensor", "button", "binary_sensor", "climate"]
 DEPENDENCIES = ["uart"]
 
 megmeet_uart_ns = cg.esphome_ns.namespace("megmeet_uart")
