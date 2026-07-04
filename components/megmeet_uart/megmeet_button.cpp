@@ -41,6 +41,15 @@ void MegmeetButton::press_action() {
     case MegmeetButtonAction::DIRECTION_FLAG_PROBE:
       this->hub_->send_direction_flag_probe();
       break;
+    case MegmeetButtonAction::REPLAY_LAST_STATUS:
+      this->hub_->replay_last_status_frame();
+      break;
+    case MegmeetButtonAction::REPLAY_LAST_HEARTBEAT:
+      this->hub_->replay_last_heartbeat_frame();
+      break;
+    case MegmeetButtonAction::REPLAY_LAST_QUERY:
+      this->hub_->replay_last_query_frame();
+      break;
   }
 }
 
