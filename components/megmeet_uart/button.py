@@ -25,6 +25,9 @@ ACTIONS = {
     "short_setpoint_probe": MegmeetButtonAction.SHORT_SETPOINT_PROBE,
     "tuya_temp_probe": MegmeetButtonAction.TUYA_TEMP_PROBE,
     "direction_flag_probe": MegmeetButtonAction.DIRECTION_FLAG_PROBE,
+    "replay_last_status": MegmeetButtonAction.REPLAY_LAST_STATUS,
+    "replay_last_heartbeat": MegmeetButtonAction.REPLAY_LAST_HEARTBEAT,
+    "replay_last_query": MegmeetButtonAction.REPLAY_LAST_QUERY,
 }
 
 CONFIG_SCHEMA = button.button_schema(
