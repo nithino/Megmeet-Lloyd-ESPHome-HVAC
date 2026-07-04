@@ -184,6 +184,9 @@ void MegmeetUART::handle_heartbeat_(const Frame &frame) {
   ESP_LOGD(TAG, "HEARTBEAT  %s", frame_to_hex_(frame).c_str());
   publish_text_(last_heartbeat_frame_sensor_, frame_to_hex_(frame));
   publish_val_(heartbeat_tick_sensor_, frame.tail2);
+
+  last_heartbeat_frame_ = frame;
+  heartbeat_frame_valid_ = true;
 }
 
 void MegmeetUART::handle_status_(const Frame &frame) {
@@ -200,6 +203,9 @@ void MegmeetUART::handle_status_(const Frame &frame) {
   publish_bin_(ac_running_sensor_, true);
   if (climate_ != nullptr)
     climate_->update_power_state(true);
+
+  last_status_frame_ = frame;
+  status_frame_valid_ = true;
 }
 
 void MegmeetUART::handle_control_(const Frame &frame) {
@@ -286,7 +292,11 @@ void MegmeetUART::handle_mode_event_(const Frame &frame) {
     climate_->update_mode_raw(frame.data3);
 }
 
-void MegmeetUART::handle_query_(const Frame &frame) { ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str()); }
+void MegmeetUART::handle_query_(const Frame &frame) {
+  ESP_LOGD(TAG, "QUERY      %s", frame_to_hex_(frame).c_str());
+  last_query_frame_ = frame;
+  query_frame_valid_ = true;
+}
 
 void MegmeetUART::handle_unknown_(const Frame &frame) {
   ESP_LOGI(TAG, "UNKNOWN    %s  (type=0x%02X, %" PRIu32 " unknown frames seen)", frame_to_hex_(frame).c_str(),
@@ -496,6 +506,30 @@ void MegmeetUART::send_direction_flag_probe() {
   Frame f = last_setpoint_event_frame_;
   f.sub_id |= 0x80;
   transmit_frame_(f);
+}
+
+void MegmeetUART::replay_last_status_frame() {
+  if (!status_frame_valid_) {
+    ESP_LOGW(TAG, "No STATUS frame captured yet -- nothing to replay.");
+    return;
+  }
+  transmit_frame_(last_status_frame_);
+}
+
+void MegmeetUART::replay_last_heartbeat_frame() {
+  if (!heartbeat_frame_valid_) {
+    ESP_LOGW(TAG, "No HEARTBEAT frame captured yet -- nothing to replay.");
+    return;
+  }
+  transmit_frame_(last_heartbeat_frame_);
+}
+
+void MegmeetUART::replay_last_query_frame() {
+  if (!query_frame_valid_) {
+    ESP_LOGW(TAG, "No QUERY frame captured yet -- nothing to replay.");
+    return;
+  }
+  transmit_frame_(last_query_frame_);
 }
 
 }  // namespace megmeet_uart
