@@ -18,13 +18,15 @@ namespace megmeet_uart {
 // Confidence levels vary a lot between the fields reported:
 //  - power (on/off) and target_temperature: HIGH. Confirmed via
 //    controlled tests -- see the caveat blocks in megmeet_uart.h.
-//  - mode: LOW-MEDIUM. Only Dry/Fan/Auto have ever actually been
-//    captured (one sample each) via MODE_EVENT (0x10). Cool's own byte
-//    has NEVER been captured -- every test that ended on Cool did so
-//    via a fan-family side-effect frame instead of a real MODE_EVENT,
-//    because of the Heat-rejection quirk documented in megmeet_uart.h.
-//    Heat is confirmed UNSUPPORTED by this specific unit (no beep, no
-//    reaction) and deliberately left out of supported_modes below.
+//  - mode: LOW-MEDIUM. Dry/Fan/Auto/Cool have each been captured once
+//    via MODE_EVENT (0x10): 0xA0/0x10/0x14/0x15 respectively. Cool's
+//    byte (0x15) took longer to find -- every earlier test that ended
+//    on Cool did so via a fan-family side-effect frame instead of a
+//    real MODE_EVENT (the Heat-rejection quirk documented in
+//    megmeet_uart.h), so it went unmapped until a direct Auto->Cool
+//    switch was captured. Heat is confirmed UNSUPPORTED by this
+//    specific unit (no beep, no reaction) and deliberately left out of
+//    supported_modes below.
 //  - fan mode: LOW-MEDIUM, same one-sample caveat for Medium/High/Auto/Low
 //    (from type=0x41), PLUS a genuine, structural ambiguity: the
 //    low<->low-medium transition uses a single toggle marker (type
