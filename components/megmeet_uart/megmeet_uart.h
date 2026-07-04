@@ -245,6 +245,22 @@ class MegmeetUART : public Component, public uart::UARTDevice {
   // on the DP itself.
   void send_tuya_temp_probe();
 
+  // SEPARATE probe, different hypothesis, inspired by a well-documented
+  // third-party protocol (AUX-based HVAC systems, github.com/GrKoR/AUX_HVAC_Protocol)
+  // where a fixed header byte explicitly flags packet origin: 0x80 = from
+  // the wifi module, 0x00 = from the AC. We have no confirmed equivalent,
+  // but every frame we've ever transmitted was an exact copy of bytes
+  // only ever observed coming FROM the mainboard -- including sub_id
+  // (0x08/0x05), which we've treated as a message-family selector but
+  // never tested as a possible origin flag too. This sends the AC's own
+  // real current SETPOINT_EVENT, completely unchanged, EXCEPT sub_id has
+  // its high bit set (0x08 -> 0x88) -- a single-variable test mirroring
+  // AUX's exact high-bit-for-module-origin design. A reaction here can
+  // only be attributed to the sub_id change, since the value is a real,
+  // current, unmodified reading (same null-hypothesis pattern as
+  // replay_last_setpoint_event()).
+  void send_direction_flag_probe();
+
  protected:
   struct Frame {
     uint8_t header1;
