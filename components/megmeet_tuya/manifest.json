@@ -1,0 +1,6 @@
+{
+  "name": "Megmeet Tuya-variant UART",
+  "version": "0.1.0",
+  "documentation": "https://github.com/nithino/Megmeet-Lloyd-ESPHome-HVAC",
+  "dependencies": []
+}
